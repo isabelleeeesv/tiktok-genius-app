@@ -5,7 +5,7 @@ import { getFirestore, doc, getDoc, setDoc, updateDoc, arrayUnion, arrayRemove, 
 import { Sparkles, Copy, Lightbulb, TrendingUp, Film, CheckCircle, Heart, MessageCircle, Lock, Star, Music, FileText, X } from 'lucide-react';
 
 // --- FIREBASE CONFIG (Provided by the environment) ---
-const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+const firebaseConfig = JSON.parse(import.meta.env.VITE_FIREBASE_CONFIG);
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 const DAILY_FREE_LIMIT = 3;
 
