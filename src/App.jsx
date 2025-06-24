@@ -1,14 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, doc, getDoc, setDoc, updateDoc, arrayUnion, arrayRemove, serverTimestamp } from 'firebase/firestore';
+// --- MODIFIED FIREBASE IMPORTS (Compat version) ---
+import firebase from 'firebase/compat/app';
+import 'firebase/compat/auth';
+import 'firebase/compat/firestore';
 import { Sparkles, Copy, Lightbulb, TrendingUp, Film, CheckCircle, Star, Music, FileText, X } from 'lucide-react';
 
 
 // --- FIREBASE CONFIG (Safely read from environment) ---
 let firebaseConfig = {};
-// This block safely tries to read and parse the environment variable.
-// We check for `import.meta.env` itself to prevent crashes in environments where it's not defined.
 try {
     const configString = import.meta.env?.VITE_FIREBASE_CONFIG;
     if (configString) {
@@ -21,7 +20,7 @@ try {
 }
 
 const DAILY_FREE_LIMIT = 3;
-const appId = 'default-app-id'; // This was missing and is needed for Firestore paths
+const appId = 'default-app-id';
 
 // --- MAIN APP COMPONENT ---
 const App = () => {
@@ -29,29 +28,30 @@ const App = () => {
     const [auth, setAuth] = useState(null);
     const [db, setDb] = useState(null);
     const [user, setUser] = useState(null);
-    const [userData, setUserData] = useState(null); // Will hold subscription status, favorites, etc.
+    const [userData, setUserData] = useState(null);
     const [isAuthReady, setIsAuthReady] = useState(false);
-    const [currentPage, setCurrentPage] = useState('generator'); // 'generator' or 'pricing'
+    const [currentPage, setCurrentPage] = useState('generator');
     const [firebaseError, setFirebaseError] = useState(null);
 
     // --- FIREBASE INITIALIZATION ---
     useEffect(() => {
-        // Only try to initialize Firebase if the config was successfully loaded
         if (firebaseConfig && Object.keys(firebaseConfig).length > 0) {
             try {
-                const app = initializeApp(firebaseConfig);
-                const authInstance = getAuth(app);
-                const dbInstance = getFirestore(app);
+                // Initialize with compat version
+                if (!firebase.apps.length) {
+                    firebase.initializeApp(firebaseConfig);
+                }
+                const authInstance = firebase.auth();
+                const dbInstance = firebase.firestore();
                 setAuth(authInstance);
                 setDb(dbInstance);
 
-                const unsubscribe = onAuthStateChanged(authInstance, async (currentUser) => {
+                const unsubscribe = authInstance.onAuthStateChanged(async (currentUser) => {
                     if (currentUser) {
                         setUser(currentUser);
                     } else {
-                        // We will sign in anonymously only if there is no user yet
                          try {
-                           await signInAnonymously(authInstance);
+                           await authInstance.signInAnonymously();
                          } catch (authError){
                             console.error("Anonymous sign-in failed:", authError);
                             setFirebaseError("Could not connect to authentication service.");
@@ -66,30 +66,28 @@ const App = () => {
                 setIsAuthReady(true);
             }
         } else {
-             // If config is missing, we mark auth as ready but show an error
             setFirebaseError("Firebase configuration is missing. The app cannot function.");
             setIsAuthReady(true);
         }
     }, []);
 
-    // --- FETCH USER DATA (SUB, FAVORITES, USAGE) ---
+    // --- FETCH USER DATA ---
     const fetchUserData = useCallback(async () => {
         if (isAuthReady && user && db) {
-            const userDocRef = doc(db, `artifacts/${appId}/users/${user.uid}`);
-            const userDoc = await getDoc(userDocRef);
+            const userDocRef = db.collection(`artifacts/${appId}/users`).doc(user.uid);
+            const userDoc = await userDocRef.get();
 
-            if (userDoc.exists()) {
+            if (userDoc.exists) {
                 setUserData(userDoc.data());
             } else {
-                // Create a new user document if one doesn't exist
                 const initialData = {
                     email: user.email || 'anonymous',
-                    createdAt: serverTimestamp(),
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
                     generations: { count: 0, lastReset: new Date().toISOString().split('T')[0] },
                     favorites: [],
                     subscription: { status: 'free' }
                 };
-                await setDoc(userDocRef, initialData);
+                await userDocRef.set(initialData);
                 setUserData(initialData);
             }
         }
@@ -155,15 +153,15 @@ const PricingPage = ({ user, db, navigate, fetchUserData }) => {
         if (!user || !db) return;
         setIsLoading(true);
         try {
-            const userDocRef = doc(db, `artifacts/${appId}/users/${user.uid}`);
+            const userDocRef = db.collection(`artifacts/${appId}/users`).doc(user.uid);
             const newSubscription = {
                 plan: 'Genius',
                 status: 'active',
-                subscribedAt: serverTimestamp(),
+                subscribedAt: firebase.firestore.FieldValue.serverTimestamp(),
             };
-            await updateDoc(userDocRef, { subscription: newSubscription });
-            await fetchUserData(); // Re-fetch user data to update UI
-            navigate('generator'); // Go back to the tool after subscribing
+            await userDocRef.update({ subscription: newSubscription });
+            await fetchUserData();
+            navigate('generator');
         } catch (error) {
             console.error("Subscription failed:", error);
         } finally {
@@ -179,7 +177,6 @@ const PricingPage = ({ user, db, navigate, fetchUserData }) => {
                 <p className="text-slate-400 text-lg max-w-2xl mx-auto mt-2">Unlock your full creative potential.</p>
             </header>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full max-w-4xl">
-                {/* Free Plan Card */}
                 <div className="bg-slate-800/50 border border-slate-700 rounded-2xl p-8 shadow-xl">
                     <h2 className="text-2xl font-bold text-center">Starter</h2>
                     <p className="text-center text-slate-400 mb-6">Perfect for getting started</p>
@@ -192,7 +189,6 @@ const PricingPage = ({ user, db, navigate, fetchUserData }) => {
                     </ul>
                     <button disabled className="w-full text-center bg-slate-700 text-slate-400 font-bold py-3 px-6 rounded-lg cursor-not-allowed">Your Current Plan</button>
                 </div>
-                {/* Genius Plan Card */}
                  <div className="bg-slate-800/80 border-2 border-purple-500 rounded-2xl p-8 shadow-2xl shadow-purple-500/10 relative">
                     <div className="absolute top-0 right-8 -translate-y-1/2 bg-purple-600 text-white text-xs font-bold px-3 py-1 rounded-full">MOST POPULAR</div>
                     <h2 className="text-2xl font-bold text-center text-purple-400">Genius</h2>
@@ -235,7 +231,6 @@ const GeneratorTool = ({ user, db, userData, fetchUserData, isSubscribed, naviga
         { name: 'Trending Audio', icon: <Music />, prompt: "3 trending TikTok audio ideas that would fit this product", premium: true },
     ];
     
-    // --- USAGE & GENERATION LOGIC ---
     const today = new Date().toISOString().split('T')[0];
     const generations = userData?.generations;
     let remainingGenerations = DAILY_FREE_LIMIT;
@@ -249,7 +244,6 @@ const GeneratorTool = ({ user, db, userData, fetchUserData, isSubscribed, naviga
     }
 
     const handleGenerateIdeas = async () => {
-        // ... (API call logic remains the same, but with usage tracking)
         if (!isSubscribed && remainingGenerations <= 0) {
             setError("You've reached your daily free limit. Upgrade to Genius for unlimited generations.");
             return;
@@ -292,12 +286,11 @@ const GeneratorTool = ({ user, db, userData, fetchUserData, isSubscribed, naviga
                 setGeneratedIdeas(parsedJson.ideas || []);
                 if (!parsedJson.ideas || parsedJson.ideas.length === 0) setError("The AI couldn't generate ideas.");
 
-                // Update usage count for free users
                 if (!isSubscribed) {
-                    const userDocRef = doc(db, `artifacts/${appId}/users/${user.uid}`);
+                    const userDocRef = db.collection(`artifacts/${appId}/users`).doc(user.uid);
                     const newCount = (generations?.lastReset === today) ? (generations.count || 0) + 1 : 1;
-                    await updateDoc(userDocRef, { generations: { count: newCount, lastReset: today } });
-                    fetchUserData(); // Refresh data
+                    await userDocRef.update({ generations: { count: newCount, lastReset: today } });
+                    fetchUserData();
                 }
 
             } else {
@@ -321,7 +314,6 @@ const GeneratorTool = ({ user, db, userData, fetchUserData, isSubscribed, naviga
         setIdeaType(type.name);
     }
     
-    // --- FAVORITES LOGIC ---
     const isFavorite = (ideaText) => userData?.favorites?.some(fav => fav.idea === ideaText);
 
     const handleToggleFavorite = async (idea) => {
@@ -329,13 +321,13 @@ const GeneratorTool = ({ user, db, userData, fetchUserData, isSubscribed, naviga
             setError("Upgrade to Genius to save your favorite ideas.");
             return;
         }
-        const userDocRef = doc(db, `artifacts/${appId}/users/${user.uid}`);
+        const userDocRef = db.collection(`artifacts/${appId}/users`).doc(user.uid);
         if (isFavorite(idea.idea)) {
-            await updateDoc(userDocRef, { favorites: arrayRemove(idea) });
+            await userDocRef.update({ favorites: firebase.firestore.FieldValue.arrayRemove(idea) });
         } else {
-            await updateDoc(userDocRef, { favorites: arrayUnion(idea) });
+            await userDocRef.update({ favorites: firebase.firestore.FieldValue.arrayUnion(idea) });
         }
-        fetchUserData(); // Refresh user data
+        fetchUserData();
     };
 
     // --- RENDER ---
@@ -362,7 +354,6 @@ const GeneratorTool = ({ user, db, userData, fetchUserData, isSubscribed, naviga
                 </div>
             </header>
 
-            {/* Favorites Drawer */}
             {isSubscribed && showFavorites && 
                 <div className="fixed inset-0 bg-black/60 z-40" onClick={() => setShowFavorites(false)}>
                     <div className="absolute top-0 right-0 h-full w-full max-w-md bg-slate-900 shadow-2xl p-6 flex flex-col animate-slide-in-right" onClick={e => e.stopPropagation()}>
