@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
-// --- MODIFIED FIREBASE IMPORTS (Compat version) ---
-import firebase from 'firebase/compat/app';
-import 'firebase/compat/auth';
-import 'firebase/compat/firestore';
+// --- REVERTED TO MODERN FIREBASE V9+ IMPORTS ---
+import { initializeApp } from 'firebase/app';
+import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
+import { getFirestore, doc, getDoc, setDoc, updateDoc, arrayUnion, arrayRemove, serverTimestamp } from 'firebase/firestore';
 import { Sparkles, Copy, Lightbulb, TrendingUp, Film, CheckCircle, Star, Music, FileText, X } from 'lucide-react';
 
 
@@ -37,21 +37,19 @@ const App = () => {
     useEffect(() => {
         if (firebaseConfig && Object.keys(firebaseConfig).length > 0) {
             try {
-                // Initialize with compat version
-                if (!firebase.apps.length) {
-                    firebase.initializeApp(firebaseConfig);
-                }
-                const authInstance = firebase.auth();
-                const dbInstance = firebase.firestore();
+                // Using modern v9+ initialization
+                const app = initializeApp(firebaseConfig);
+                const authInstance = getAuth(app);
+                const dbInstance = getFirestore(app);
                 setAuth(authInstance);
                 setDb(dbInstance);
 
-                const unsubscribe = authInstance.onAuthStateChanged(async (currentUser) => {
+                const unsubscribe = onAuthStateChanged(authInstance, async (currentUser) => {
                     if (currentUser) {
                         setUser(currentUser);
                     } else {
                          try {
-                           await authInstance.signInAnonymously();
+                           await signInAnonymously(authInstance);
                          } catch (authError){
                             console.error("Anonymous sign-in failed:", authError);
                             setFirebaseError("Could not connect to authentication service.");
@@ -74,20 +72,21 @@ const App = () => {
     // --- FETCH USER DATA ---
     const fetchUserData = useCallback(async () => {
         if (isAuthReady && user && db) {
-            const userDocRef = db.collection(`artifacts/${appId}/users`).doc(user.uid);
-            const userDoc = await userDocRef.get();
+            // Using modern v9+ syntax for doc reference
+            const userDocRef = doc(db, `artifacts/${appId}/users/${user.uid}`);
+            const userDoc = await getDoc(userDocRef);
 
-            if (userDoc.exists) {
+            if (userDoc.exists()) {
                 setUserData(userDoc.data());
             } else {
                 const initialData = {
                     email: user.email || 'anonymous',
-                    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    createdAt: serverTimestamp(), // Modern v9+ syntax
                     generations: { count: 0, lastReset: new Date().toISOString().split('T')[0] },
                     favorites: [],
                     subscription: { status: 'free' }
                 };
-                await userDocRef.set(initialData);
+                await setDoc(userDocRef, initialData);
                 setUserData(initialData);
             }
         }
@@ -153,13 +152,13 @@ const PricingPage = ({ user, db, navigate, fetchUserData }) => {
         if (!user || !db) return;
         setIsLoading(true);
         try {
-            const userDocRef = db.collection(`artifacts/${appId}/users`).doc(user.uid);
+            const userDocRef = doc(db, `artifacts/${appId}/users/${user.uid}`);
             const newSubscription = {
                 plan: 'Genius',
                 status: 'active',
-                subscribedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                subscribedAt: serverTimestamp(),
             };
-            await userDocRef.update({ subscription: newSubscription });
+            await updateDoc(userDocRef, { subscription: newSubscription });
             await fetchUserData();
             navigate('generator');
         } catch (error) {
@@ -287,9 +286,9 @@ const GeneratorTool = ({ user, db, userData, fetchUserData, isSubscribed, naviga
                 if (!parsedJson.ideas || parsedJson.ideas.length === 0) setError("The AI couldn't generate ideas.");
 
                 if (!isSubscribed) {
-                    const userDocRef = db.collection(`artifacts/${appId}/users`).doc(user.uid);
+                    const userDocRef = doc(db, `artifacts/${appId}/users/${user.uid}`);
                     const newCount = (generations?.lastReset === today) ? (generations.count || 0) + 1 : 1;
-                    await userDocRef.update({ generations: { count: newCount, lastReset: today } });
+                    await updateDoc(userDocRef, { generations: { count: newCount, lastReset: today } });
                     fetchUserData();
                 }
 
@@ -321,11 +320,11 @@ const GeneratorTool = ({ user, db, userData, fetchUserData, isSubscribed, naviga
             setError("Upgrade to Genius to save your favorite ideas.");
             return;
         }
-        const userDocRef = db.collection(`artifacts/${appId}/users`).doc(user.uid);
+        const userDocRef = doc(db, `artifacts/${appId}/users/${user.uid}`);
         if (isFavorite(idea.idea)) {
-            await userDocRef.update({ favorites: firebase.firestore.FieldValue.arrayRemove(idea) });
+            await updateDoc(userDocRef, { favorites: arrayRemove(idea) });
         } else {
-            await userDocRef.update({ favorites: firebase.firestore.FieldValue.arrayUnion(idea) });
+            await updateDoc(userDocRef, { favorites: arrayUnion(idea) });
         }
         fetchUserData();
     };
