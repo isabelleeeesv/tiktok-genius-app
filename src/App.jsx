@@ -1,13 +1,27 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
+import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, doc, getDoc, setDoc, updateDoc, arrayUnion, arrayRemove, serverTimestamp } from 'firebase/firestore';
-import { Sparkles, Copy, Lightbulb, TrendingUp, Film, CheckCircle, Heart, MessageCircle, Lock, Star, Music, FileText, X } from 'lucide-react';
+import { Sparkles, Copy, Lightbulb, TrendingUp, Film, CheckCircle, Star, Music, FileText, X } from 'lucide-react';
 
-// --- FIREBASE CONFIG (Provided by the environment) ---
-const firebaseConfig = JSON.parse(import.meta.env.VITE_FIREBASE_CONFIG);
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
+// --- FIREBASE CONFIG (Safely read from environment) ---
+let firebaseConfig = {};
+// This block safely tries to read and parse the environment variable.
+// We check for `import.meta.env` itself to prevent crashes in environments where it's not defined.
+try {
+    const configString = import.meta.env?.VITE_FIREBASE_CONFIG;
+    if (configString) {
+        firebaseConfig = JSON.parse(configString);
+    } else {
+        console.error("CRITICAL: Firebase config environment variable (VITE_FIREBASE_CONFIG) not found.");
+    }
+} catch (e) {
+    console.error("CRITICAL: Failed to parse Firebase config from environment variables. The variable might be malformed.", e);
+}
+
 const DAILY_FREE_LIMIT = 3;
+const appId = 'default-app-id'; // This was missing and is needed for Firestore paths
 
 // --- MAIN APP COMPONENT ---
 const App = () => {
@@ -18,30 +32,43 @@ const App = () => {
     const [userData, setUserData] = useState(null); // Will hold subscription status, favorites, etc.
     const [isAuthReady, setIsAuthReady] = useState(false);
     const [currentPage, setCurrentPage] = useState('generator'); // 'generator' or 'pricing'
+    const [firebaseError, setFirebaseError] = useState(null);
 
     // --- FIREBASE INITIALIZATION ---
     useEffect(() => {
-        try {
-            const app = initializeApp(firebaseConfig);
-            const authInstance = getAuth(app);
-            const dbInstance = getFirestore(app);
-            setAuth(authInstance);
-            setDb(dbInstance);
+        // Only try to initialize Firebase if the config was successfully loaded
+        if (firebaseConfig && Object.keys(firebaseConfig).length > 0) {
+            try {
+                const app = initializeApp(firebaseConfig);
+                const authInstance = getAuth(app);
+                const dbInstance = getFirestore(app);
+                setAuth(authInstance);
+                setDb(dbInstance);
 
-            const unsubscribe = onAuthStateChanged(authInstance, async (currentUser) => {
-                if (currentUser) {
-                    setUser(currentUser);
-                } else if (typeof __initial_auth_token !== 'undefined') {
-                    await signInWithCustomToken(authInstance, __initial_auth_token);
-                } else {
-                    await signInAnonymously(authInstance);
-                }
+                const unsubscribe = onAuthStateChanged(authInstance, async (currentUser) => {
+                    if (currentUser) {
+                        setUser(currentUser);
+                    } else {
+                        // We will sign in anonymously only if there is no user yet
+                         try {
+                           await signInAnonymously(authInstance);
+                         } catch (authError){
+                            console.error("Anonymous sign-in failed:", authError);
+                            setFirebaseError("Could not connect to authentication service.");
+                         }
+                    }
+                    setIsAuthReady(true);
+                });
+                return () => unsubscribe();
+            } catch (error) {
+                console.error("Firebase initialization error:", error);
+                setFirebaseError("Could not initialize Firebase. Please check the configuration.");
                 setIsAuthReady(true);
-            });
-            return () => unsubscribe();
-        } catch (error) {
-            console.error("Firebase initialization error:", error);
-            setIsAuthReady(true); 
+            }
+        } else {
+             // If config is missing, we mark auth as ready but show an error
+            setFirebaseError("Firebase configuration is missing. The app cannot function.");
+            setIsAuthReady(true);
         }
     }, []);
 
@@ -73,11 +100,15 @@ const App = () => {
     }, [fetchUserData]);
     
     // --- RENDER LOGIC ---
-    if (!isAuthReady || !userData) {
+    if (!isAuthReady || (user && !userData) ) {
         return <LoadingScreen />;
     }
+
+    if (firebaseError) {
+        return <ErrorScreen message={firebaseError} />
+    }
     
-    const isSubscribed = userData.subscription?.status === 'active';
+    const isSubscribed = userData?.subscription?.status === 'active';
     const navigate = (page) => setCurrentPage(page);
 
     return (
@@ -100,6 +131,13 @@ const App = () => {
 
 
 // --- SCREENS AND MAJOR COMPONENTS ---
+const ErrorScreen = ({ message }) => (
+    <div className="flex flex-col items-center justify-center min-h-screen bg-slate-900 text-center p-8">
+        <h1 className="text-2xl font-bold text-red-500 mb-4">Application Error</h1>
+        <p className="text-slate-400 mb-2">{message}</p>
+        <p className="text-slate-500 text-sm">Please check the browser console for more details (Right-click &rarr; Inspect &rarr; Console).</p>
+    </div>
+);
 
 const LoadingScreen = () => (
     <div className="flex items-center justify-center min-h-screen bg-slate-900">
@@ -199,12 +237,12 @@ const GeneratorTool = ({ user, db, userData, fetchUserData, isSubscribed, naviga
     
     // --- USAGE & GENERATION LOGIC ---
     const today = new Date().toISOString().split('T')[0];
-    const generations = userData.generations;
+    const generations = userData?.generations;
     let remainingGenerations = DAILY_FREE_LIMIT;
 
     if (!isSubscribed) {
         if (generations?.lastReset === today) {
-            remainingGenerations = DAILY_FREE_LIMIT - generations.count;
+            remainingGenerations = DAILY_FREE_LIMIT - (generations.count || 0);
         }
     } else {
         remainingGenerations = "Unlimited";
@@ -257,7 +295,7 @@ const GeneratorTool = ({ user, db, userData, fetchUserData, isSubscribed, naviga
                 // Update usage count for free users
                 if (!isSubscribed) {
                     const userDocRef = doc(db, `artifacts/${appId}/users/${user.uid}`);
-                    const newCount = (generations?.lastReset === today) ? generations.count + 1 : 1;
+                    const newCount = (generations?.lastReset === today) ? (generations.count || 0) + 1 : 1;
                     await updateDoc(userDocRef, { generations: { count: newCount, lastReset: today } });
                     fetchUserData(); // Refresh data
                 }
@@ -284,7 +322,7 @@ const GeneratorTool = ({ user, db, userData, fetchUserData, isSubscribed, naviga
     }
     
     // --- FAVORITES LOGIC ---
-    const isFavorite = (ideaText) => userData.favorites?.some(fav => fav.idea === ideaText);
+    const isFavorite = (ideaText) => userData?.favorites?.some(fav => fav.idea === ideaText);
 
     const handleToggleFavorite = async (idea) => {
         if (!isSubscribed) {
@@ -318,7 +356,7 @@ const GeneratorTool = ({ user, db, userData, fetchUserData, isSubscribed, naviga
                          </div>
                     ) : (
                          <button onClick={() => setShowFavorites(!showFavorites)} className="flex items-center gap-2 bg-slate-800/50 border border-slate-700 px-4 py-2 rounded-lg hover:bg-slate-700 transition-colors">
-                            <Star className="w-5 h-5 text-yellow-400"/> My Favorites ({userData.favorites?.length || 0})
+                            <Star className="w-5 h-5 text-yellow-400"/> My Favorites ({userData?.favorites?.length || 0})
                          </button>
                     )}
                 </div>
@@ -333,7 +371,7 @@ const GeneratorTool = ({ user, db, userData, fetchUserData, isSubscribed, naviga
                             <button onClick={() => setShowFavorites(false)} className="text-slate-400 hover:text-white"><X/></button>
                         </div>
                         <div className="overflow-y-auto flex-grow pr-2">
-                           {userData.favorites?.length > 0 ? userData.favorites.map((fav, index) => (
+                           {userData?.favorites?.length > 0 ? userData.favorites.map((fav, index) => (
                                <div key={index} className="bg-slate-800 p-4 rounded-lg mb-3">
                                    <p className="text-slate-300">{fav.idea}</p>
                                    <div className="flex justify-end gap-2 mt-2">
