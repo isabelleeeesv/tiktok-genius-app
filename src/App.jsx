@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-// --- REVERTED TO MODERN FIREBASE V9+ IMPORTS ---
-import { initializeApp } from 'firebase/app';
+// --- MODERN FIREBASE V9+ IMPORTS with getApps ---
+import { initializeApp, getApps } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, doc, getDoc, setDoc, updateDoc, arrayUnion, arrayRemove, serverTimestamp } from 'firebase/firestore';
 import { Sparkles, Copy, Lightbulb, TrendingUp, Film, CheckCircle, Star, Music, FileText, X } from 'lucide-react';
@@ -37,8 +37,14 @@ const App = () => {
     useEffect(() => {
         if (firebaseConfig && Object.keys(firebaseConfig).length > 0) {
             try {
-                // Using modern v9+ initialization
-                const app = initializeApp(firebaseConfig);
+                // --- SAFETY CHECK: Initialize Firebase only if it hasn't been already ---
+                let app;
+                if (!getApps().length) {
+                    app = initializeApp(firebaseConfig);
+                } else {
+                    app = getApps()[0]; // Use the existing app if already initialized
+                }
+
                 const authInstance = getAuth(app);
                 const dbInstance = getFirestore(app);
                 setAuth(authInstance);
