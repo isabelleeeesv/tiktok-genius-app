@@ -17,7 +17,7 @@ import {
     serverTimestamp,
     onSnapshot
 } from 'firebase/firestore';
-import { Sparkles, Copy, Lightbulb, TrendingUp, Film, CheckCircle, Star, Music, FileText, X, Lock } from 'lucide-react';
+import { Sparkles, Copy, Lightbulb, TrendingUp, Film, CheckCircle, Star, Music, FileText, X, Lock, Settings } from 'lucide-react';
 import { loadStripe } from '@stripe/stripe-js';
 
 // --- CONSTANTS ---
@@ -111,22 +111,12 @@ const App = () => {
 
             unsubscribeDb = onSnapshot(userDocRef, 
                 async (docSnap) => { 
-                    if (docSnap.exists()) {
-                        setUserData(docSnap.data());
-                    } else {
-                        const initialData = {
-                            email: user.email || 'anonymous',
-                            createdAt: serverTimestamp(),
-                            generations: { count: 0, lastReset: new Date().toISOString().split('T')[0] },
-                            favorites: [],
-                            subscription: { status: 'free' }
-                        };
-                        try {
-                           await setDoc(userDocRef, initialData);
-                        } catch(e) {
-                           console.error("Error creating user document:", e);
-                           setFirebaseError("Could not create user profile.");
-                        }
+                    const data = docSnap.data();
+                    setUserData(data);
+                    
+                    // If the user just subscribed but their local data hasn't updated, this catches it
+                    if (data?.subscription?.status === 'active' && currentPage === 'pricing') {
+                        navigate('generator');
                     }
                 },
                 (error) => { 
@@ -136,35 +126,23 @@ const App = () => {
             );
         }
         return () => unsubscribeDb();
-    }, [user, db]); 
+    }, [user, db, currentPage, navigate]); 
     
     // --- HANDLE STRIPE REDIRECT ---
     useEffect(() => {
         const query = new URLSearchParams(window.location.search);
 
-        if (query.get("payment_success") && user && db) {
-            const appId = VITE_APP_ID || (typeof __app_id !== 'undefined' ? __app_id : 'default-app-id');
-            const userDocRef = doc(db, `artifacts/${appId}/users/${user.uid}`);
-            
-            updateDoc(userDocRef, {
-                subscription: {
-                    status: 'active',
-                    plan: 'Genius',
-                    subscribedAt: serverTimestamp()
-                }
-            }).then(() => {
-                window.history.replaceState(null, '', window.location.pathname);
-                navigate('generator');
-            }).catch(error => {
-                console.error("Firestore update failed after payment:", error);
-                setFirebaseError("Payment successful, but we couldn't update your account. Please contact support.");
-            });
+        if (query.get("payment_success")) {
+             window.history.replaceState(null, '', window.location.pathname);
+             // We no longer update the database here. The webhook will handle it.
+             // We just navigate back to the generator.
+             navigate('generator');
         }
 
         if (query.get("payment_canceled")) {
             window.history.replaceState(null, '', window.location.pathname);
         }
-    }, [user, db, navigate]);
+    }, [navigate]);
 
 
     // --- RENDER LOGIC ---
@@ -238,6 +216,7 @@ const PricingPage = ({ user, navigate }) => {
                 successUrl: `${window.location.href.split('?')[0]}?payment_success=true`,
                 cancelUrl: `${window.location.href.split('?')[0]}?payment_canceled=true`,
                 customerEmail: user?.email,
+                clientReferenceId: user?.uid, // IMPORTANT: This links the checkout to the Firebase user
                 automaticTax: { enabled: true },
             });
 
@@ -305,6 +284,7 @@ const GeneratorTool = ({ user, db, userData, isSubscribed, navigate }) => {
     const [error, setError] = useState(null);
     const [copiedIndex, setCopiedIndex] = useState(null);
     const [showFavorites, setShowFavorites] = useState(false);
+    const [isManagingSub, setIsManagingSub] = useState(false);
 
     const ideaTypes = [
         { name: 'Hooks', icon: <Sparkles />, prompt: "short, scroll-stopping hooks (3-7 seconds long)", premium: false },
@@ -325,6 +305,26 @@ const GeneratorTool = ({ user, db, userData, isSubscribed, navigate }) => {
     } else {
         remainingGenerations = "Unlimited";
     }
+
+    const handleManageSubscription = async () => {
+        setIsManagingSub(true);
+        setError(null);
+        try {
+            const response = await fetch('/api/create-portal-session', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId: user.uid }),
+            });
+            const { url, error } = await response.json();
+            if (error) {
+                throw new Error(error);
+            }
+            window.location.href = url;
+        } catch (err) {
+            setError(`Could not manage subscription: ${err.message}`);
+            setIsManagingSub(false);
+        }
+    };
 
     const handleGenerateIdeas = async () => {
         if (!VITE_GEMINI_API_KEY) {
@@ -454,16 +454,21 @@ const GeneratorTool = ({ user, db, userData, isSubscribed, navigate }) => {
                         {isSubscribed ? "Welcome, Genius Member!" : "Welcome! Let's create something viral."}
                     </p>
                 </div>
-                <div className="mt-4 sm:mt-0">
+                <div className="mt-4 sm:mt-0 flex items-center gap-4">
                     {!isSubscribed ? (
                          <div className="text-right">
                              <p className="font-bold text-slate-300">Daily Generations Left: {remainingGenerations > 0 ? remainingGenerations : 0}</p>
                              <button onClick={() => navigate('pricing')} className="text-purple-400 hover:text-purple-300 font-semibold">Upgrade to Genius ✨</button>
                          </div>
                     ) : (
-                         <button onClick={() => setShowFavorites(!showFavorites)} className="flex items-center gap-2 bg-slate-800/50 border border-slate-700 px-4 py-2 rounded-lg hover:bg-slate-700 transition-colors">
-                             <Star className="w-5 h-5 text-yellow-400"/> My Favorites ({userData?.favorites?.length || 0})
-                         </button>
+                        <>
+                            <button onClick={handleManageSubscription} disabled={isManagingSub} className="flex items-center gap-2 bg-slate-800/50 border border-slate-700 px-4 py-2 rounded-lg hover:bg-slate-700 transition-colors disabled:opacity-50">
+                                <Settings className="w-5 h-5 text-slate-400"/> {isManagingSub ? 'Loading...' : 'Manage Subscription'}
+                            </button>
+                            <button onClick={() => setShowFavorites(!showFavorites)} className="flex items-center gap-2 bg-slate-800/50 border border-slate-700 px-4 py-2 rounded-lg hover:bg-slate-700 transition-colors">
+                                <Star className="w-5 h-5 text-yellow-400"/> My Favorites ({userData?.favorites?.length || 0})
+                            </button>
+                        </>
                     )}
                 </div>
             </header>
