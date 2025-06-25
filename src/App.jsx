@@ -1,23 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
-// --- MODERN FIREBASE V9+ IMPORTS with getApps ---
-import { initializeApp, getApps } from 'firebase/app';
-import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, doc, getDoc, setDoc, updateDoc, arrayUnion, arrayRemove, serverTimestamp } from 'firebase/firestore';
+// --- UPDATED IMPORTS ---
+import { auth, db } from './firebase.js'; // Import from our new config file, with explicit extension
+import { onAuthStateChanged, signInAnonymously } from 'firebase/auth';
+import { doc, getDoc, setDoc, updateDoc, arrayUnion, arrayRemove, serverTimestamp } from 'firebase/firestore';
 import { Sparkles, Copy, Lightbulb, TrendingUp, Film, CheckCircle, Star, Music, FileText, X } from 'lucide-react';
 
-
-// --- FIREBASE CONFIG (Safely read from environment) ---
-let firebaseConfig = {};
-try {
-    const configString = import.meta.env?.VITE_FIREBASE_CONFIG;
-    if (configString) {
-        firebaseConfig = JSON.parse(configString);
-    } else {
-        console.error("CRITICAL: Firebase config environment variable (VITE_FIREBASE_CONFIG) not found.");
-    }
-} catch (e) {
-    console.error("CRITICAL: Failed to parse Firebase config from environment variables. The variable might be malformed.", e);
-}
 
 const DAILY_FREE_LIMIT = 3;
 const appId = 'default-app-id';
@@ -25,60 +12,38 @@ const appId = 'default-app-id';
 // --- MAIN APP COMPONENT ---
 const App = () => {
     // --- STATE MANAGEMENT ---
-    const [auth, setAuth] = useState(null);
-    const [db, setDb] = useState(null);
     const [user, setUser] = useState(null);
     const [userData, setUserData] = useState(null);
     const [isAuthReady, setIsAuthReady] = useState(false);
     const [currentPage, setCurrentPage] = useState('generator');
     const [firebaseError, setFirebaseError] = useState(null);
 
-    // --- FIREBASE INITIALIZATION ---
+    // --- FIREBASE INITIALIZATION (Simplified) ---
     useEffect(() => {
-        if (firebaseConfig && Object.keys(firebaseConfig).length > 0) {
-            try {
-                // --- SAFETY CHECK: Initialize Firebase only if it hasn't been already ---
-                let app;
-                if (!getApps().length) {
-                    app = initializeApp(firebaseConfig);
-                } else {
-                    app = getApps()[0]; // Use the existing app if already initialized
-                }
-
-                const authInstance = getAuth(app);
-                const dbInstance = getFirestore(app);
-                setAuth(authInstance);
-                setDb(dbInstance);
-
-                const unsubscribe = onAuthStateChanged(authInstance, async (currentUser) => {
-                    if (currentUser) {
-                        setUser(currentUser);
-                    } else {
-                         try {
-                           await signInAnonymously(authInstance);
-                         } catch (authError){
-                            console.error("Anonymous sign-in failed:", authError);
-                            setFirebaseError("Could not connect to authentication service.");
-                         }
-                    }
-                    setIsAuthReady(true);
-                });
-                return () => unsubscribe();
-            } catch (error) {
-                console.error("Firebase initialization error:", error);
-                setFirebaseError("Could not initialize Firebase. Please check the configuration.");
-                setIsAuthReady(true);
-            }
-        } else {
-            setFirebaseError("Firebase configuration is missing. The app cannot function.");
+        if (!auth || !db) {
+            setFirebaseError("Firebase configuration is missing or invalid. App cannot function.");
             setIsAuthReady(true);
+            return;
         }
+        const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+            if (currentUser) {
+                setUser(currentUser);
+            } else {
+                 try {
+                   await signInAnonymously(auth);
+                 } catch (authError){
+                    console.error("Anonymous sign-in failed:", authError);
+                    setFirebaseError("Could not connect to authentication service.");
+                 }
+            }
+            setIsAuthReady(true);
+        });
+        return () => unsubscribe();
     }, []);
 
     // --- FETCH USER DATA ---
     const fetchUserData = useCallback(async () => {
         if (isAuthReady && user && db) {
-            // Using modern v9+ syntax for doc reference
             const userDocRef = doc(db, `artifacts/${appId}/users/${user.uid}`);
             const userDoc = await getDoc(userDocRef);
 
@@ -87,7 +52,7 @@ const App = () => {
             } else {
                 const initialData = {
                     email: user.email || 'anonymous',
-                    createdAt: serverTimestamp(), // Modern v9+ syntax
+                    createdAt: serverTimestamp(),
                     generations: { count: 0, lastReset: new Date().toISOString().split('T')[0] },
                     favorites: [],
                     subscription: { status: 'free' }
