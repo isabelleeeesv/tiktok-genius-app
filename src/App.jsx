@@ -4,7 +4,10 @@ import {
     getAuth, 
     onAuthStateChanged, 
     signInAnonymously,
-    signInWithCustomToken 
+    signInWithCustomToken,
+    signInWithEmailAndPassword,
+    createUserWithEmailAndPassword,
+    signOut 
 } from 'firebase/auth';
 import { 
     getFirestore, 
@@ -41,18 +44,6 @@ const App = () => {
     const [firebaseError, setFirebaseError] = useState(null);
 
     const navigate = useCallback((page) => setCurrentPage(page), []);
-
-    // --- HOOKS ---
-    const fetchUserData = useCallback(async () => {
-        if (user && db) {
-            const appId = VITE_APP_ID || (typeof __app_id !== 'undefined' ? __app_id : 'default-app-id');
-            const userDocRef = doc(db, `artifacts/${appId}/users/${user.uid}`);
-            const userDoc = await getDoc(userDocRef);
-            if (userDoc.exists()) {
-                setUserData(userDoc.data());
-            }
-        }
-    }, [user, db]);
 
     // --- FIREBASE INITIALIZATION & AUTHENTICATION ---
     useEffect(() => {
@@ -111,12 +102,27 @@ const App = () => {
 
             unsubscribeDb = onSnapshot(userDocRef, 
                 async (docSnap) => { 
-                    const data = docSnap.data();
-                    setUserData(data);
-                    
-                    // If the user just subscribed but their local data hasn't updated, this catches it
-                    if (data?.subscription?.status === 'active' && currentPage === 'pricing') {
-                        navigate('generator');
+                    if (docSnap.exists()) {
+                        const data = docSnap.data();
+                        setUserData(data);
+                        if (data?.subscription?.status === 'active' && currentPage === 'pricing') {
+                            navigate('generator');
+                        }
+                    } else {
+                        const initialData = {
+                            email: user.email || 'anonymous',
+                            createdAt: serverTimestamp(),
+                            generations: { count: 0, lastReset: new Date().toISOString().split('T')[0] },
+                            favorites: [],
+                            subscription: { status: 'free' }
+                        };
+                        try {
+                           await setDoc(userDocRef, initialData);
+                           setUserData(initialData);
+                        } catch(e) {
+                           console.error("Error creating user document:", e);
+                           setFirebaseError("Could not create user profile.");
+                        }
                     }
                 },
                 (error) => { 
@@ -134,8 +140,6 @@ const App = () => {
 
         if (query.get("payment_success")) {
              window.history.replaceState(null, '', window.location.pathname);
-             // We no longer update the database here. The webhook will handle it.
-             // We just navigate back to the generator.
              navigate('generator');
         }
 
@@ -145,6 +149,13 @@ const App = () => {
     }, [navigate]);
 
 
+    // --- LOGIN PAGE REDIRECT ---
+    useEffect(() => {
+        if (isAuthReady && !user) {
+            setCurrentPage('login');
+        }
+    }, [isAuthReady, user]);
+
     // --- RENDER LOGIC ---
     if (!isAuthReady || (user && !userData) ) {
         return <LoadingScreen />;
@@ -153,7 +164,7 @@ const App = () => {
     if (firebaseError) {
         return <ErrorScreen message={firebaseError} />
     }
-    
+
     const isSubscribed = userData?.subscription?.status === 'active';
 
     return (
@@ -162,8 +173,9 @@ const App = () => {
             <div className="absolute bottom-0 right-0 translate-x-1/2 translate-y-1/2 w-[600px] h-[600px] bg-pink-500/20 rounded-full filter blur-3xl opacity-50"></div>
             
             <div className="relative z-10 p-4 sm:p-6 lg:p-8 w-full max-w-6xl mx-auto">
-                {currentPage === 'generator' && <GeneratorTool user={user} db={db} userData={userData} isSubscribed={isSubscribed} navigate={navigate} />}
-                {currentPage === 'pricing' && <PricingPage user={user} navigate={navigate} />}
+                {currentPage === 'login' && <LoginPage auth={auth} setUser={setUser} navigate={setCurrentPage} />}
+                {currentPage === 'generator' && user && <GeneratorTool user={user} db={db} userData={userData} isSubscribed={isSubscribed} navigate={setCurrentPage} />}
+                {currentPage === 'pricing' && user && <PricingPage user={user} navigate={setCurrentPage} />}
 
                 <footer className="text-center mt-12 text-slate-500 text-sm">
                     <p>Powered by AI. Designed for creators.</p>
@@ -213,10 +225,10 @@ const PricingPage = ({ user, navigate }) => {
             const { error } = await stripe.redirectToCheckout({
                 lineItems: [{ price: VITE_STRIPE_PRICE_ID, quantity: 1 }],
                 mode: 'subscription',
-                successUrl: `${window.location.href.split('?')[0]}?payment_success=true`,
-                cancelUrl: `${window.location.href.split('?')[0]}?payment_canceled=true`,
-                customerEmail: user?.email,
-                clientReferenceId: user?.uid, // IMPORTANT: This links the checkout to the Firebase user
+                successUrl: `${window.location.origin}?payment_success=true`,
+                cancelUrl: `${window.location.origin}?payment_canceled=true`,
+                customerEmail: user?.isAnonymous ? '' : user?.email,
+                clientReferenceId: user?.uid,
                 automaticTax: { enabled: true },
             });
 
@@ -275,6 +287,77 @@ const PricingPage = ({ user, navigate }) => {
     );
 };
 
+const LoginPage = ({ auth, setUser, navigate }) => {
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [error, setError] = useState(null);
+    const [isLogin, setIsLogin] = useState(true);
+    const [loading, setLoading] = useState(false);
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setError(null);
+        setLoading(true);
+        try {
+            if (isLogin) {
+                const userCred = await signInWithEmailAndPassword(auth, email, password);
+                setUser(userCred.user);
+                navigate('generator');
+            } else {
+                const userCred = await createUserWithEmailAndPassword(auth, email, password);
+                setUser(userCred.user);
+                navigate('generator');
+            }
+        } catch (err) {
+            setError(err.message);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    return (
+        <div className="flex flex-col items-center justify-center min-h-screen">
+            <div className="bg-slate-800/80 p-8 rounded-xl shadow-lg w-full max-w-md">
+                <h2 className="text-2xl font-bold mb-4 text-center">{isLogin ? 'Login' : 'Sign Up'}</h2>
+                {error && <div className="text-red-400 mb-2 text-center">{error}</div>}
+                <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+                    <input
+                        type="email"
+                        value={email}
+                        onChange={e => setEmail(e.target.value)}
+                        placeholder="Email"
+                        className="bg-slate-900/80 border border-slate-700 rounded-lg px-4 py-3 text-white placeholder-slate-500 focus:ring-2 focus:ring-purple-500/50 focus:outline-none transition-all"
+                        required
+                    />
+                    <input
+                        type="password"
+                        value={password}
+                        onChange={e => setPassword(e.target.value)}
+                        placeholder="Password"
+                        className="bg-slate-900/80 border border-slate-700 rounded-lg px-4 py-3 text-white placeholder-slate-500 focus:ring-2 focus:ring-purple-500/50 focus:outline-none transition-all"
+                        required
+                    />
+                    <button
+                        type="submit"
+                        disabled={loading}
+                        className="bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:scale-105 disabled:opacity-50 transition-all"
+                    >
+                        {loading ? (isLogin ? 'Logging in...' : 'Signing up...') : (isLogin ? 'Login' : 'Sign Up')}
+                    </button>
+                </form>
+                <div className="text-center mt-4">
+                    <button
+                        className="text-purple-400 hover:text-purple-300 font-semibold"
+                        onClick={() => setIsLogin(!isLogin)}
+                    >
+                        {isLogin ? "Don't have an account? Sign Up" : 'Already have an account? Login'}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 const GeneratorTool = ({ user, db, userData, isSubscribed, navigate }) => {
     // --- STATE & CONSTANTS ---
     const [product, setProduct] = useState('');
@@ -285,6 +368,7 @@ const GeneratorTool = ({ user, db, userData, isSubscribed, navigate }) => {
     const [copiedIndex, setCopiedIndex] = useState(null);
     const [showFavorites, setShowFavorites] = useState(false);
     const [isManagingSub, setIsManagingSub] = useState(false);
+    const [logoutLoading, setLogoutLoading] = useState(false);
 
     const ideaTypes = [
         { name: 'Hooks', icon: <Sparkles />, prompt: "short, scroll-stopping hooks (3-7 seconds long)", premium: false },
@@ -315,13 +399,14 @@ const GeneratorTool = ({ user, db, userData, isSubscribed, navigate }) => {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ userId: user.uid }),
             });
-            const { url, error } = await response.json();
-            if (error) {
-                throw new Error(error);
+            const data = await response.json();
+            if (data.error) {
+                throw new Error(data.error);
             }
-            window.location.href = url;
+            window.location.href = data.url;
         } catch (err) {
             setError(`Could not manage subscription: ${err.message}`);
+        } finally {
             setIsManagingSub(false);
         }
     };
@@ -470,6 +555,19 @@ const GeneratorTool = ({ user, db, userData, isSubscribed, navigate }) => {
                             </button>
                         </>
                     )}
+                    {/* Logout button for all logged-in users */}
+                    <button
+                        onClick={async () => {
+                            setLogoutLoading(true);
+                            await signOut(auth);
+                            setLogoutLoading(false);
+                            window.location.reload();
+                        }}
+                        disabled={logoutLoading}
+                        className="ml-4 text-slate-400 hover:text-white border border-slate-700 px-3 py-2 rounded-lg disabled:opacity-50"
+                    >
+                        {logoutLoading ? 'Logging out...' : 'Logout'}
+                    </button>
                 </div>
             </header>
 
