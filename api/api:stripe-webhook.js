@@ -3,11 +3,12 @@ import { getFirestore } from 'firebase-admin/firestore';
 import Stripe from 'stripe';
 import { buffer } from 'micro';
 
-const stripe = new Stripe(process.env.VITE_STRIPE_SECRET_KEY);
-const webhookSecret = process.env.VITE_STRIPE_WEBHOOK_SECRET;
+// Use environment variables without the VITE_ prefix for server-side code
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
 // Initialize Firebase Admin SDK
-const serviceAccount = JSON.parse(process.env.VITE_FIREBASE_SERVICE_ACCOUNT_KEY);
+const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY);
 
 if (!getApps().length) {
   initializeApp({
@@ -50,9 +51,13 @@ export default async function handler(req, res) {
         console.error('Webhook Error: No client_reference_id (userId) in session.');
         return res.status(400).send('Webhook Error: Missing userId.');
     }
+     if (!stripeCustomerId) {
+        console.error('Webhook Error: No customer ID in session.');
+        return res.status(400).send('Webhook Error: Missing customer ID.');
+    }
 
     try {
-        const appId = process.env.VITE_APP_ID || 'default-app-id';
+        const appId = process.env.APP_ID || 'default-app-id';
         const userDocRef = db.collection(`artifacts/${appId}/users`).doc(userId);
         
         await userDocRef.update({
