@@ -14,7 +14,8 @@ import {
     updateDoc, 
     arrayUnion, 
     arrayRemove, 
-    serverTimestamp 
+    serverTimestamp,
+    onSnapshot
 } from 'firebase/firestore';
 import { Sparkles, Copy, Lightbulb, TrendingUp, Film, CheckCircle, Star, Music, FileText, X, Lock } from 'lucide-react';
 
@@ -32,19 +33,33 @@ const App = () => {
     const [currentPage, setCurrentPage] = useState('generator');
     const [firebaseError, setFirebaseError] = useState(null);
 
+    // --- HOOKS ---
+    // All hooks (useState, useEffect, useCallback) must be called at the top level
+    // and in the same order on every render.
+
+    // This function is now only used for one-off data fetches, like after an upgrade.
+    const fetchUserData = useCallback(async () => {
+        if (user && db) {
+            const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+            const userDocRef = doc(db, `artifacts/${appId}/users/${user.uid}`);
+            const userDoc = await getDoc(userDocRef);
+            if (userDoc.exists()) {
+                setUserData(userDoc.data());
+            }
+        }
+    }, [user, db]);
+
     // --- FIREBASE INITIALIZATION & AUTHENTICATION ---
     useEffect(() => {
         try {
-            // Get firebase config and app ID from global variables
-            const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
-
-            if (!firebaseConfig) {
+            const firebaseConfigStr = typeof __firebase_config !== 'undefined' ? __firebase_config : null;
+            if (!firebaseConfigStr) {
                  setFirebaseError("Firebase configuration is missing. The app cannot start.");
                  setIsAuthReady(true);
                  return;
             }
-
-            // Initialize Firebase App
+            const firebaseConfig = JSON.parse(firebaseConfigStr);
+            
             const app = initializeApp(firebaseConfig);
             const authInstance = getAuth(app);
             const dbInstance = getFirestore(app);
@@ -52,13 +67,11 @@ const App = () => {
             setAuth(authInstance);
             setDb(dbInstance);
 
-            // Authentication state listener
-            const unsubscribe = onAuthStateChanged(authInstance, async (currentUser) => {
+            const unsubscribeAuth = onAuthStateChanged(authInstance, async (currentUser) => {
                 if (currentUser) {
                     setUser(currentUser);
                 } else {
                      try {
-                        // Use initial auth token if available, otherwise sign in anonymously
                         if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
                             await signInWithCustomToken(authInstance, __initial_auth_token);
                         } else {
@@ -69,56 +82,61 @@ const App = () => {
                         setFirebaseError("Could not connect to the authentication service.");
                     }
                 }
-                // Auth check is complete
                 if (!isAuthReady) {
                    setIsAuthReady(true);
                 }
             });
 
-            return () => unsubscribe();
+            return () => unsubscribeAuth();
         } catch (error) {
             console.error("Firebase Initialization Error:", error);
-            setFirebaseError("Failed to initialize Firebase services.");
+            setFirebaseError(`Failed to initialize Firebase services: ${error.message}`);
             setIsAuthReady(true);
         }
     }, []); // Empty dependency array ensures this runs only once on mount
 
-    // --- FETCH USER DATA ---
-    const fetchUserData = useCallback(async () => {
-        // Ensure auth is ready, user is logged in, and db is initialized
-        if (isAuthReady && user && db) {
+    // --- REAL-TIME USER DATA LISTENER ---
+    useEffect(() => {
+        let unsubscribeDb = () => {};
+        // Only attempt to fetch data if we have a user and a db connection
+        if (user && db) {
             const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
             const userDocRef = doc(db, `artifacts/${appId}/users/${user.uid}`);
-            
-            try {
-                const userDoc = await getDoc(userDocRef);
 
-                if (userDoc.exists()) {
-                    setUserData(userDoc.data());
-                } else {
-                    // Create a new user profile if it doesn't exist
-                    const initialData = {
-                        email: user.email || 'anonymous',
-                        createdAt: serverTimestamp(),
-                        generations: { count: 0, lastReset: new Date().toISOString().split('T')[0] },
-                        favorites: [],
-                        subscription: { status: 'free' }
-                    };
-                    await setDoc(userDocRef, initialData);
-                    setUserData(initialData);
+            unsubscribeDb = onSnapshot(userDocRef, 
+                async (docSnap) => { // Success callback
+                    if (docSnap.exists()) {
+                        setUserData(docSnap.data());
+                    } else {
+                        // Create a new user profile if it doesn't exist on first load
+                        const initialData = {
+                            email: user.email || 'anonymous',
+                            createdAt: serverTimestamp(),
+                            generations: { count: 0, lastReset: new Date().toISOString().split('T')[0] },
+                            favorites: [],
+                            subscription: { status: 'free' }
+                        };
+                        try {
+                           await setDoc(userDocRef, initialData);
+                           // The onSnapshot listener will automatically set the userData state with this new data.
+                        } catch(e) {
+                           console.error("Error creating user document:", e);
+                           setFirebaseError("Could not create user profile.");
+                        }
+                    }
+                },
+                (error) => { // Error callback
+                    console.error("Error fetching user data with onSnapshot:", error);
+                    setFirebaseError("Could not retrieve user profile.");
                 }
-            } catch (dbError) {
-                console.error("Error fetching user data:", dbError);
-                setFirebaseError("Could not retrieve user profile.");
-            }
+            );
         }
-    }, [isAuthReady, user, db]);
-    
-    useEffect(() => {
-        fetchUserData();
-    }, [fetchUserData]);
+        // Cleanup: Unsubscribe from the listener when the user logs out or component unmounts
+        return () => unsubscribeDb();
+    }, [user, db]); // This effect re-runs if the user or db connection changes
     
     // --- RENDER LOGIC ---
+    // Conditional returns must come *after* all hooks have been called.
     if (!isAuthReady || (user && !userData) ) {
         return <LoadingScreen />;
     }
@@ -185,7 +203,7 @@ const PricingPage = ({ user, db, navigate, fetchUserData }) => {
                 subscribedAt: serverTimestamp(),
             };
             await updateDoc(userDocRef, { subscription: newSubscription });
-            await fetchUserData(); // Refresh user data after update
+            await fetchUserData(); // Manually refresh user data after this specific update
             navigate('generator');
         } catch (error) {
             console.error("Subscription failed:", error);
@@ -238,7 +256,7 @@ const PricingPage = ({ user, db, navigate, fetchUserData }) => {
     );
 };
 
-const GeneratorTool = ({ user, db, userData, fetchUserData, isSubscribed, navigate }) => {
+const GeneratorTool = ({ user, db, userData, isSubscribed, navigate }) => {
     // --- STATE & CONSTANTS ---
     const [product, setProduct] = useState('');
     const [ideaType, setIdeaType] = useState('Hooks');
@@ -320,7 +338,7 @@ const GeneratorTool = ({ user, db, userData, fetchUserData, isSubscribed, naviga
                     const userDocRef = doc(db, `artifacts/${appId}/users/${user.uid}`);
                     const newCount = (generations?.lastReset === today) ? (generations.count || 0) + 1 : 1;
                     await updateDoc(userDocRef, { generations: { count: newCount, lastReset: today } });
-                    fetchUserData();
+                    // onSnapshot will handle the UI update automatically
                 }
 
             } else {
@@ -358,13 +376,12 @@ const GeneratorTool = ({ user, db, userData, fetchUserData, isSubscribed, naviga
         
         try {
              if (isFavorite(idea.idea)) {
-                // Find the exact favorite object to remove, as arrayRemove needs the full object.
                 const favToRemove = userData.favorites.find(fav => fav.idea === idea.idea);
                 if(favToRemove) await updateDoc(userDocRef, { favorites: arrayRemove(favToRemove) });
              } else {
                  await updateDoc(userDocRef, { favorites: arrayUnion({ ...idea, savedAt: new Date().toISOString() }) });
              }
-             fetchUserData(); // Refresh data to show updated favorite state
+             // onSnapshot will handle the UI update automatically
         } catch(error) {
             console.error("Error toggling favorite:", error);
             setError("Could not update your favorites list.");
