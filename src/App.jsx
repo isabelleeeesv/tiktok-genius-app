@@ -1,64 +1,115 @@
 import React, { useState, useEffect, useCallback } from 'react';
-// --- UPDATED IMPORTS ---
-import { auth, db } from './firebase.js'; // Import from our new config file, with explicit extension
-import { onAuthStateChanged, signInAnonymously } from 'firebase/auth';
-import { doc, getDoc, setDoc, updateDoc, arrayUnion, arrayRemove, serverTimestamp } from 'firebase/firestore';
-import { Sparkles, Copy, Lightbulb, TrendingUp, Film, CheckCircle, Star, Music, FileText, X } from 'lucide-react';
+import { initializeApp } from 'firebase/app';
+import { 
+    getAuth, 
+    onAuthStateChanged, 
+    signInAnonymously,
+    signInWithCustomToken 
+} from 'firebase/auth';
+import { 
+    getFirestore, 
+    doc, 
+    getDoc, 
+    setDoc, 
+    updateDoc, 
+    arrayUnion, 
+    arrayRemove, 
+    serverTimestamp 
+} from 'firebase/firestore';
+import { Sparkles, Copy, Lightbulb, TrendingUp, Film, CheckCircle, Star, Music, FileText, X, Lock } from 'lucide-react';
 
-
+// --- CONSTANTS ---
 const DAILY_FREE_LIMIT = 3;
-const appId = 'default-app-id';
 
 // --- MAIN APP COMPONENT ---
 const App = () => {
     // --- STATE MANAGEMENT ---
+    const [auth, setAuth] = useState(null);
+    const [db, setDb] = useState(null);
     const [user, setUser] = useState(null);
     const [userData, setUserData] = useState(null);
     const [isAuthReady, setIsAuthReady] = useState(false);
     const [currentPage, setCurrentPage] = useState('generator');
     const [firebaseError, setFirebaseError] = useState(null);
 
-    // --- FIREBASE INITIALIZATION (Simplified) ---
+    // --- FIREBASE INITIALIZATION & AUTHENTICATION ---
     useEffect(() => {
-        if (!auth || !db) {
-            setFirebaseError("Firebase configuration is missing or invalid. App cannot function.");
-            setIsAuthReady(true);
-            return;
-        }
-        const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-            if (currentUser) {
-                setUser(currentUser);
-            } else {
-                 try {
-                   await signInAnonymously(auth);
-                 } catch (authError){
-                    console.error("Anonymous sign-in failed:", authError);
-                    setFirebaseError("Could not connect to authentication service.");
-                 }
+        try {
+            // Get firebase config and app ID from global variables
+            const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+
+            if (!firebaseConfig) {
+                 setFirebaseError("Firebase configuration is missing. The app cannot start.");
+                 setIsAuthReady(true);
+                 return;
             }
+
+            // Initialize Firebase App
+            const app = initializeApp(firebaseConfig);
+            const authInstance = getAuth(app);
+            const dbInstance = getFirestore(app);
+            
+            setAuth(authInstance);
+            setDb(dbInstance);
+
+            // Authentication state listener
+            const unsubscribe = onAuthStateChanged(authInstance, async (currentUser) => {
+                if (currentUser) {
+                    setUser(currentUser);
+                } else {
+                     try {
+                        // Use initial auth token if available, otherwise sign in anonymously
+                        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                            await signInWithCustomToken(authInstance, __initial_auth_token);
+                        } else {
+                            await signInAnonymously(authInstance);
+                        }
+                    } catch (authError) {
+                        console.error("Authentication failed:", authError);
+                        setFirebaseError("Could not connect to the authentication service.");
+                    }
+                }
+                // Auth check is complete
+                if (!isAuthReady) {
+                   setIsAuthReady(true);
+                }
+            });
+
+            return () => unsubscribe();
+        } catch (error) {
+            console.error("Firebase Initialization Error:", error);
+            setFirebaseError("Failed to initialize Firebase services.");
             setIsAuthReady(true);
-        });
-        return () => unsubscribe();
-    }, []);
+        }
+    }, []); // Empty dependency array ensures this runs only once on mount
 
     // --- FETCH USER DATA ---
     const fetchUserData = useCallback(async () => {
+        // Ensure auth is ready, user is logged in, and db is initialized
         if (isAuthReady && user && db) {
+            const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
             const userDocRef = doc(db, `artifacts/${appId}/users/${user.uid}`);
-            const userDoc = await getDoc(userDocRef);
+            
+            try {
+                const userDoc = await getDoc(userDocRef);
 
-            if (userDoc.exists()) {
-                setUserData(userDoc.data());
-            } else {
-                const initialData = {
-                    email: user.email || 'anonymous',
-                    createdAt: serverTimestamp(),
-                    generations: { count: 0, lastReset: new Date().toISOString().split('T')[0] },
-                    favorites: [],
-                    subscription: { status: 'free' }
-                };
-                await setDoc(userDocRef, initialData);
-                setUserData(initialData);
+                if (userDoc.exists()) {
+                    setUserData(userDoc.data());
+                } else {
+                    // Create a new user profile if it doesn't exist
+                    const initialData = {
+                        email: user.email || 'anonymous',
+                        createdAt: serverTimestamp(),
+                        generations: { count: 0, lastReset: new Date().toISOString().split('T')[0] },
+                        favorites: [],
+                        subscription: { status: 'free' }
+                    };
+                    await setDoc(userDocRef, initialData);
+                    setUserData(initialData);
+                }
+            } catch (dbError) {
+                console.error("Error fetching user data:", dbError);
+                setFirebaseError("Could not retrieve user profile.");
             }
         }
     }, [isAuthReady, user, db]);
@@ -80,11 +131,13 @@ const App = () => {
     const navigate = (page) => setCurrentPage(page);
 
     return (
-        <div className="min-h-screen bg-slate-900 text-white font-sans relative overflow-hidden">
+        <div className="min-h-screen bg-slate-900 text-white font-sans relative overflow-x-hidden">
+            {/* Background decorative blobs */}
             <div className="absolute top-0 left-0 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-purple-600/20 rounded-full filter blur-3xl opacity-50"></div>
             <div className="absolute bottom-0 right-0 translate-x-1/2 translate-y-1/2 w-[600px] h-[600px] bg-pink-500/20 rounded-full filter blur-3xl opacity-50"></div>
             
             <div className="relative z-10 p-4 sm:p-6 lg:p-8 w-full max-w-6xl mx-auto">
+                {/* Page content based on navigation state */}
                 {currentPage === 'generator' && <GeneratorTool user={user} db={db} userData={userData} fetchUserData={fetchUserData} isSubscribed={isSubscribed} navigate={navigate} />}
                 {currentPage === 'pricing' && <PricingPage user={user} db={db} navigate={navigate} fetchUserData={fetchUserData} />}
 
@@ -99,11 +152,12 @@ const App = () => {
 
 
 // --- SCREENS AND MAJOR COMPONENTS ---
+
 const ErrorScreen = ({ message }) => (
     <div className="flex flex-col items-center justify-center min-h-screen bg-slate-900 text-center p-8">
         <h1 className="text-2xl font-bold text-red-500 mb-4">Application Error</h1>
         <p className="text-slate-400 mb-2">{message}</p>
-        <p className="text-slate-500 text-sm">Please check the browser console for more details (Right-click &rarr; Inspect &rarr; Console).</p>
+        <p className="text-slate-500 text-sm">Please try refreshing the page. If the problem persists, check the browser console for more details.</p>
     </div>
 );
 
@@ -123,6 +177,7 @@ const PricingPage = ({ user, db, navigate, fetchUserData }) => {
         if (!user || !db) return;
         setIsLoading(true);
         try {
+            const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
             const userDocRef = doc(db, `artifacts/${appId}/users/${user.uid}`);
             const newSubscription = {
                 plan: 'Genius',
@@ -130,7 +185,7 @@ const PricingPage = ({ user, db, navigate, fetchUserData }) => {
                 subscribedAt: serverTimestamp(),
             };
             await updateDoc(userDocRef, { subscription: newSubscription });
-            await fetchUserData();
+            await fetchUserData(); // Refresh user data after update
             navigate('generator');
         } catch (error) {
             console.error("Subscription failed:", error);
@@ -142,43 +197,43 @@ const PricingPage = ({ user, db, navigate, fetchUserData }) => {
     return (
         <div className="flex flex-col items-center animate-fade-in">
              <header className="text-center mb-10 relative w-full">
-                <button onClick={() => navigate('generator')} className="absolute top-0 left-0 text-slate-400 hover:text-white transition-colors"><X className="w-6 h-6" /></button>
-                <h1 className="text-4xl sm:text-5xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-purple-400 via-pink-500 to-red-500">Choose Your Plan</h1>
-                <p className="text-slate-400 text-lg max-w-2xl mx-auto mt-2">Unlock your full creative potential.</p>
-            </header>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full max-w-4xl">
-                <div className="bg-slate-800/50 border border-slate-700 rounded-2xl p-8 shadow-xl">
-                    <h2 className="text-2xl font-bold text-center">Starter</h2>
-                    <p className="text-center text-slate-400 mb-6">Perfect for getting started</p>
-                    <div className="text-center mb-8">
-                        <span className="text-5xl font-extrabold">Free</span>
-                    </div>
-                    <ul className="space-y-4 mb-8">
-                        <li className="flex items-center"><CheckCircle className="w-5 h-5 text-green-400 mr-3" /> {DAILY_FREE_LIMIT} Daily Generations</li>
-                        <li className="flex items-center"><CheckCircle className="w-5 h-5 text-green-400 mr-3" /> Basic Idea Categories</li>
-                    </ul>
-                    <button disabled className="w-full text-center bg-slate-700 text-slate-400 font-bold py-3 px-6 rounded-lg cursor-not-allowed">Your Current Plan</button>
-                </div>
+                 <button onClick={() => navigate('generator')} className="absolute top-0 left-0 text-slate-400 hover:text-white transition-colors"><X className="w-6 h-6" /></button>
+                 <h1 className="text-4xl sm:text-5xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-purple-400 via-pink-500 to-red-500">Choose Your Plan</h1>
+                 <p className="text-slate-400 text-lg max-w-2xl mx-auto mt-2">Unlock your full creative potential.</p>
+             </header>
+             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full max-w-4xl">
+                 <div className="bg-slate-800/50 border border-slate-700 rounded-2xl p-8 shadow-xl">
+                     <h2 className="text-2xl font-bold text-center">Starter</h2>
+                     <p className="text-center text-slate-400 mb-6">Perfect for getting started</p>
+                     <div className="text-center mb-8">
+                         <span className="text-5xl font-extrabold">Free</span>
+                     </div>
+                     <ul className="space-y-4 mb-8">
+                         <li className="flex items-center"><CheckCircle className="w-5 h-5 text-green-400 mr-3" /> {DAILY_FREE_LIMIT} Daily Generations</li>
+                         <li className="flex items-center"><CheckCircle className="w-5 h-5 text-green-400 mr-3" /> Basic Idea Categories</li>
+                     </ul>
+                     <button disabled className="w-full text-center bg-slate-700 text-slate-400 font-bold py-3 px-6 rounded-lg cursor-not-allowed">Your Current Plan</button>
+                 </div>
                  <div className="bg-slate-800/80 border-2 border-purple-500 rounded-2xl p-8 shadow-2xl shadow-purple-500/10 relative">
-                    <div className="absolute top-0 right-8 -translate-y-1/2 bg-purple-600 text-white text-xs font-bold px-3 py-1 rounded-full">MOST POPULAR</div>
-                    <h2 className="text-2xl font-bold text-center text-purple-400">Genius</h2>
-                    <p className="text-center text-slate-400 mb-6">For creators ready to go viral</p>
-                    <div className="text-center mb-8">
-                        <span className="text-5xl font-extrabold">$7</span>
-                        <span className="text-slate-400">/month</span>
-                    </div>
-                    <ul className="space-y-4 mb-8">
-                        <li className="flex items-center"><CheckCircle className="w-5 h-5 text-green-400 mr-3" /> Unlimited Generations</li>
-                        <li className="flex items-center"><CheckCircle className="w-5 h-5 text-green-400 mr-3" /> All Idea Categories</li>
-                        <li className="flex items-center"><CheckCircle className="w-5 h-5 text-green-400 mr-3" /> **NEW** Viral Script Templates</li>
-                        <li className="flex items-center"><CheckCircle className="w-5 h-5 text-green-400 mr-3" /> **NEW** Trending Audio Ideas</li>
-                        <li className="flex items-center"><CheckCircle className="w-5 h-5 text-green-400 mr-3" /> Save Favorite Ideas</li>
-                    </ul>
-                    <button onClick={handleSubscribe} disabled={isLoading} className="w-full flex items-center justify-center bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:shadow-xl hover:shadow-purple-500/20 hover:scale-105 disabled:opacity-50 disabled:hover:scale-100 transition-all duration-300">
-                        {isLoading ? 'Processing...' : 'Upgrade to Genius'}
-                    </button>
-                </div>
-            </div>
+                     <div className="absolute top-0 right-8 -translate-y-1/2 bg-purple-600 text-white text-xs font-bold px-3 py-1 rounded-full">MOST POPULAR</div>
+                     <h2 className="text-2xl font-bold text-center text-purple-400">Genius</h2>
+                     <p className="text-center text-slate-400 mb-6">For creators ready to go viral</p>
+                     <div className="text-center mb-8">
+                         <span className="text-5xl font-extrabold">$7</span>
+                         <span className="text-slate-400">/month</span>
+                     </div>
+                     <ul className="space-y-4 mb-8">
+                         <li className="flex items-center"><CheckCircle className="w-5 h-5 text-green-400 mr-3" /> Unlimited Generations</li>
+                         <li className="flex items-center"><CheckCircle className="w-5 h-5 text-green-400 mr-3" /> All Idea Categories</li>
+                         <li className="flex items-center"><CheckCircle className="w-5 h-5 text-green-400 mr-3" /> **NEW** Viral Script Templates</li>
+                         <li className="flex items-center"><CheckCircle className="w-5 h-5 text-green-400 mr-3" /> **NEW** Trending Audio Ideas</li>
+                         <li className="flex items-center"><CheckCircle className="w-5 h-5 text-green-400 mr-3" /> Save Favorite Ideas</li>
+                     </ul>
+                     <button onClick={handleSubscribe} disabled={isLoading} className="w-full flex items-center justify-center bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:shadow-xl hover:shadow-purple-500/20 hover:scale-105 disabled:opacity-50 disabled:hover:scale-100 transition-all duration-300">
+                         {isLoading ? 'Processing...' : 'Upgrade to Genius'}
+                     </button>
+                 </div>
+             </div>
         </div>
     );
 };
@@ -247,16 +302,21 @@ const GeneratorTool = ({ user, db, userData, fetchUserData, isSubscribed, naviga
 
         try {
             const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData?.error?.message || `API error: ${response.status}`);
+            }
+            
             const responseData = await response.json();
-            if (!response.ok) throw new Error(responseData?.error?.message || `API error: ${response.status}`);
             
             if (responseData.candidates?.[0]?.content?.parts?.[0]) {
                 const jsonText = responseData.candidates[0].content.parts[0].text;
                 const parsedJson = JSON.parse(jsonText);
                 setGeneratedIdeas(parsedJson.ideas || []);
-                if (!parsedJson.ideas || parsedJson.ideas.length === 0) setError("The AI couldn't generate ideas.");
+                if (!parsedJson.ideas || parsedJson.ideas.length === 0) setError("The AI couldn't generate ideas for this topic.");
 
-                if (!isSubscribed) {
+                if (!isSubscribed && user && db) {
+                    const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
                     const userDocRef = doc(db, `artifacts/${appId}/users/${user.uid}`);
                     const newCount = (generations?.lastReset === today) ? (generations.count || 0) + 1 : 1;
                     await updateDoc(userDocRef, { generations: { count: newCount, lastReset: today } });
@@ -264,7 +324,7 @@ const GeneratorTool = ({ user, db, userData, fetchUserData, isSubscribed, naviga
                 }
 
             } else {
-                if (responseData.candidates?.[0]?.finishReason === 'SAFETY') setError('Request blocked for safety reasons.');
+                if (responseData.candidates?.[0]?.finishReason === 'SAFETY') setError('Request blocked for safety reasons. Please try a different product.');
                 else setError('Failed to generate ideas. The response was empty.');
             }
         } catch (e) {
@@ -291,26 +351,52 @@ const GeneratorTool = ({ user, db, userData, fetchUserData, isSubscribed, naviga
             setError("Upgrade to Genius to save your favorite ideas.");
             return;
         }
+        if (!user || !db) return;
+
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
         const userDocRef = doc(db, `artifacts/${appId}/users/${user.uid}`);
-        if (isFavorite(idea.idea)) {
-            await updateDoc(userDocRef, { favorites: arrayRemove(idea) });
-        } else {
-            await updateDoc(userDocRef, { favorites: arrayUnion(idea) });
+        
+        try {
+             if (isFavorite(idea.idea)) {
+                // Find the exact favorite object to remove, as arrayRemove needs the full object.
+                const favToRemove = userData.favorites.find(fav => fav.idea === idea.idea);
+                if(favToRemove) await updateDoc(userDocRef, { favorites: arrayRemove(favToRemove) });
+             } else {
+                 await updateDoc(userDocRef, { favorites: arrayUnion({ ...idea, savedAt: new Date().toISOString() }) });
+             }
+             fetchUserData(); // Refresh data to show updated favorite state
+        } catch(error) {
+            console.error("Error toggling favorite:", error);
+            setError("Could not update your favorites list.");
         }
-        fetchUserData();
     };
+    
+    const handleCopy = (text, index) => {
+        const textArea = document.createElement('textarea');
+        textArea.value = text;
+        document.body.appendChild(textArea);
+        textArea.select();
+        try {
+            document.execCommand('copy');
+            setCopiedIndex(index);
+            setTimeout(() => setCopiedIndex(null), 2000);
+        } catch (err) {
+            console.error('Failed to copy text: ', err);
+        }
+        document.body.removeChild(textArea);
+    }
 
     // --- RENDER ---
     return (
         <div className="animate-fade-in">
-            <header className="text-center mb-10 flex flex-col sm:flex-row justify-between items-center">
-                 <div>
+            <header className="text-center mb-10 flex flex-col sm:flex-row justify-between items-center gap-4">
+                <div>
                     <h1 className="text-3xl sm:text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-purple-400 via-pink-500 to-red-500">TikTok Shop Genius</h1>
                     <p className="text-slate-400 text-lg">
                         {isSubscribed ? "Welcome, Genius Member!" : "Welcome! Let's create something viral."}
                     </p>
                 </div>
-                 <div className="mt-4 sm:mt-0">
+                <div className="mt-4 sm:mt-0">
                     {!isSubscribed ? (
                          <div className="text-right">
                              <p className="font-bold text-slate-300">Daily Generations Left: {remainingGenerations > 0 ? remainingGenerations : 0}</p>
@@ -318,44 +404,36 @@ const GeneratorTool = ({ user, db, userData, fetchUserData, isSubscribed, naviga
                          </div>
                     ) : (
                          <button onClick={() => setShowFavorites(!showFavorites)} className="flex items-center gap-2 bg-slate-800/50 border border-slate-700 px-4 py-2 rounded-lg hover:bg-slate-700 transition-colors">
-                            <Star className="w-5 h-5 text-yellow-400"/> My Favorites ({userData?.favorites?.length || 0})
+                             <Star className="w-5 h-5 text-yellow-400"/> My Favorites ({userData?.favorites?.length || 0})
                          </button>
                     )}
                 </div>
             </header>
 
             {isSubscribed && showFavorites && 
-                <div className="fixed inset-0 bg-black/60 z-40" onClick={() => setShowFavorites(false)}>
-                    <div className="absolute top-0 right-0 h-full w-full max-w-md bg-slate-900 shadow-2xl p-6 flex flex-col animate-slide-in-right" onClick={e => e.stopPropagation()}>
-                        <div className="flex justify-between items-center mb-4">
-                            <h2 className="text-2xl font-bold">My Favorites</h2>
-                            <button onClick={() => setShowFavorites(false)} className="text-slate-400 hover:text-white"><X/></button>
-                        </div>
-                        <div className="overflow-y-auto flex-grow pr-2">
-                           {userData?.favorites?.length > 0 ? userData.favorites.map((fav, index) => (
-                               <div key={index} className="bg-slate-800 p-4 rounded-lg mb-3">
-                                   <p className="text-slate-300">{fav.idea}</p>
-                                   <div className="flex justify-end gap-2 mt-2">
-                                        <button onClick={() => handleToggleFavorite(fav)} className="text-slate-500 hover:text-red-500"><X className="w-4 h-4"/></button>
-                                        <button onClick={() => {
-                                            const textArea = document.createElement('textarea');
-                                            textArea.value = fav.idea;
-                                            document.body.appendChild(textArea);
-                                            textArea.select();
-                                            document.execCommand('copy');
-                                            document.body.removeChild(textArea);
-                                        }} className="text-slate-500 hover:text-white"><Copy className="w-4 h-4"/></button>
-                                   </div>
-                               </div>
-                           )) : <p className="text-slate-500 text-center mt-8">You haven't saved any ideas yet.</p>}
-                        </div>
-                    </div>
-                </div>
+                 <div className="fixed inset-0 bg-black/60 z-40" onClick={() => setShowFavorites(false)}>
+                     <div className="absolute top-0 right-0 h-full w-full max-w-md bg-slate-900 shadow-2xl p-6 flex flex-col animate-slide-in-right" onClick={e => e.stopPropagation()}>
+                         <div className="flex justify-between items-center mb-4">
+                             <h2 className="text-2xl font-bold">My Favorites</h2>
+                             <button onClick={() => setShowFavorites(false)} className="text-slate-400 hover:text-white"><X/></button>
+                         </div>
+                         <div className="overflow-y-auto flex-grow pr-2">
+                            {userData?.favorites?.length > 0 ? [...userData.favorites].reverse().map((fav, index) => (
+                                 <div key={index} className="bg-slate-800 p-4 rounded-lg mb-3">
+                                     <p className="text-slate-300">{fav.idea}</p>
+                                     <div className="flex justify-end gap-2 mt-2">
+                                          <button onClick={() => handleToggleFavorite(fav)} className="text-slate-500 hover:text-red-500"><X className="w-4 h-4"/></button>
+                                          <button onClick={() => handleCopy(fav.idea, `fav-${index}`)} className="text-slate-500 hover:text-white"><Copy className="w-4 h-4"/></button>
+                                     </div>
+                                 </div>
+                            )) : <p className="text-slate-500 text-center mt-8">You haven't saved any ideas yet.</p>}
+                         </div>
+                     </div>
+                 </div>
             }
 
-
             <main className="bg-slate-800/50 p-6 rounded-2xl shadow-2xl border border-slate-700 backdrop-blur-lg">
-                 <div className="flex flex-col sm:flex-row gap-4 mb-5">
+                <div className="flex flex-col sm:flex-row gap-4 mb-5">
                     <input
                         type="text"
                         value={product}
@@ -366,9 +444,9 @@ const GeneratorTool = ({ user, db, userData, fetchUserData, isSubscribed, naviga
                      <button
                         onClick={handleGenerateIdeas}
                         disabled={isLoading || (!isSubscribed && remainingGenerations <= 0)}
-                        className="flex items-center justify-center bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:shadow-xl hover:shadow-purple-500/20 hover:scale-105 disabled:opacity-50 disabled:hover:scale-100 transition-all"
+                        className="flex items-center justify-center bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:shadow-xl hover:shadow-purple-500/20 hover:scale-105 disabled:opacity-50 disabled:hover:scale-100 disabled:cursor-not-allowed transition-all"
                     >
-                        {isLoading ? (<>...</>) : (<><Sparkles className="w-5 h-5 mr-2" /> Generate Ideas</>)}
+                        {isLoading ? (<svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>) : (<><Sparkles className="w-5 h-5 mr-2" /> Generate Ideas</>)}
                     </button>
                 </div>
                 
@@ -386,34 +464,25 @@ const GeneratorTool = ({ user, db, userData, fetchUserData, isSubscribed, naviga
                 </div>
             </main>
 
-            <div className="mt-10">
+            <div className="mt-10 min-h-[300px]">
                 {error && (<div className="text-center bg-red-500/10 border border-red-500/30 text-red-300 p-4 rounded-lg"><p>{error}</p></div>)}
                 {generatedIdeas.length > 0 && (
-                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                        {generatedIdeas.map((item, index) => (
-                            <div key={index} className="group bg-slate-800/50 border border-slate-700 p-5 rounded-xl shadow-lg flex flex-col justify-between transform hover:-translate-y-1 transition-all duration-300 hover:border-purple-500/50">
-                                <p className="text-slate-300 mb-4 flex-grow">{item.idea}</p>
-                                <div className="flex justify-end items-center gap-2">
+                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-fade-in">
+                         {generatedIdeas.map((item, index) => (
+                             <div key={index} className="group bg-slate-800/50 border border-slate-700 p-5 rounded-xl shadow-lg flex flex-col justify-between transform hover:-translate-y-1 transition-all duration-300 hover:border-purple-500/50">
+                                 <p className="text-slate-300 mb-4 flex-grow">{item.idea}</p>
+                                 <div className="flex justify-end items-center gap-2">
                                      <button onClick={() => handleToggleFavorite(item)} className={`transition-colors ${isSubscribed ? 'text-slate-500 hover:text-yellow-400' : 'text-slate-600 cursor-help'}`} title={isSubscribed ? 'Save to Favorites' : 'Upgrade to save ideas'}>
-                                        <Star className={`w-5 h-5 ${isFavorite(item.idea) ? 'fill-current text-yellow-400' : ''}`} />
+                                         <Star className={`w-5 h-5 ${isFavorite(item.idea) ? 'fill-current text-yellow-400' : ''}`} />
                                      </button>
-                                     <button onClick={() => {
-                                        const textArea = document.createElement('textarea');
-                                        textArea.value = item.idea;
-                                        document.body.appendChild(textArea);
-                                        textArea.select();
-                                        document.execCommand('copy');
-                                        document.body.removeChild(textArea);
-                                        setCopiedIndex(index);
-                                        setTimeout(() => setCopiedIndex(null), 2000);
-                                     }} className="self-end flex items-center bg-slate-700/50 text-slate-400 group-hover:bg-purple-500/20 group-hover:text-white px-3 py-1.5 rounded-md text-xs font-semibold transition-colors duration-200">
-                                        <Copy className="w-3.5 h-3.5 mr-2" />
-                                        {copiedIndex === index ? 'Copied!' : 'Copy'}
-                                    </button>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
+                                     <button onClick={() => handleCopy(item.idea, index)} className="self-end flex items-center bg-slate-700/50 text-slate-400 group-hover:bg-purple-500/20 group-hover:text-white px-3 py-1.5 rounded-md text-xs font-semibold transition-colors duration-200">
+                                         <Copy className="w-3.5 h-3.5 mr-2" />
+                                         {copiedIndex === index ? 'Copied!' : 'Copy'}
+                                     </button>
+                                 </div>
+                             </div>
+                         ))}
+                     </div>
                 )}
             </div>
         </div>
