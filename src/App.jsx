@@ -43,7 +43,7 @@ const App = () => {
     const [currentPage, setCurrentPage] = useState('generator');
     const [firebaseError, setFirebaseError] = useState(null);
     const [showLoginModal, setShowLoginModal] = useState(false); // NEW
-    const [guestGenerations, setGuestGenerations] = useState({ count: 0, lastReset: '' }); // NEW
+    const [guestGenerations, setGuestGenerations] = useState({ count: 0, lastResetTimestamp: '' }); // NEW
     const [showOnboarding, setShowOnboarding] = useState(false); // Onboarding modal
 
     const navigate = useCallback((page) => setCurrentPage(page), []);
@@ -52,13 +52,22 @@ const App = () => {
     useEffect(() => {
         // Only for guests
         if (!user) {
-            const today = new Date().toISOString().split('T')[0];
             const stored = JSON.parse(localStorage.getItem('guestGenerations') || '{}');
-            if (stored.lastReset === today) {
-                setGuestGenerations(stored);
+            const now = Date.now();
+            if (!stored.lastResetTimestamp) {
+                // First time use
+                const newState = { count: 0, lastResetTimestamp: now };
+                setGuestGenerations(newState);
+                localStorage.setItem('guestGenerations', JSON.stringify(newState));
             } else {
-                setGuestGenerations({ count: 0, lastReset: today });
-                localStorage.setItem('guestGenerations', JSON.stringify({ count: 0, lastReset: today }));
+                // Check if 24 hours have passed since last reset
+                if (now - stored.lastResetTimestamp >= 24 * 60 * 60 * 1000) {
+                    const newState = { count: 0, lastResetTimestamp: now };
+                    setGuestGenerations(newState);
+                    localStorage.setItem('guestGenerations', JSON.stringify(newState));
+                } else {
+                    setGuestGenerations(stored);
+                }
             }
         }
     }, [user]);
@@ -191,15 +200,29 @@ const App = () => {
     let remainingGenerations = DAILY_FREE_LIMIT;
     if (user) {
         if (!isSubscribed) {
-            if (userData?.generations?.lastReset === today) {
-                remainingGenerations = DAILY_FREE_LIMIT - (userData.generations.count || 0);
+            if (userData?.generations?.lastResetTimestamp) {
+                const now = Date.now();
+                const lastReset = userData.generations.lastResetTimestamp;
+                if (now - lastReset >= 24 * 60 * 60 * 1000) {
+                    remainingGenerations = DAILY_FREE_LIMIT;
+                } else {
+                    remainingGenerations = DAILY_FREE_LIMIT - (userData.generations.count || 0);
+                }
+            } else {
+                remainingGenerations = DAILY_FREE_LIMIT;
             }
         } else {
             remainingGenerations = 'Unlimited';
         }
     } else {
-        if (guestGenerations.lastReset === today) {
-            remainingGenerations = DAILY_FREE_LIMIT - (guestGenerations.count || 0);
+        if (guestGenerations.lastResetTimestamp) {
+            const now = Date.now();
+            const lastReset = guestGenerations.lastResetTimestamp;
+            if (now - lastReset >= 24 * 60 * 60 * 1000) {
+                remainingGenerations = DAILY_FREE_LIMIT;
+            } else {
+                remainingGenerations = DAILY_FREE_LIMIT - (guestGenerations.count || 0);
+            }
         } else {
             remainingGenerations = DAILY_FREE_LIMIT;
         }
@@ -650,7 +673,7 @@ const GeneratorTool = ({ user, db, userData, isSubscribed, navigate, guestGenera
     return (
         <div className="animate-fade-in">
             {/* Guest-to-user upgrade modal when out of free generations, only if login modal is not open */}
-            {!user && !showLoginModal && guestGenerations.lastReset === new Date().toISOString().split('T')[0] && guestGenerations.count >= DAILY_FREE_LIMIT && (
+            {!user && !showLoginModal && guestGenerations.lastResetTimestamp === new Date().toISOString().split('T')[0] && guestGenerations.count >= DAILY_FREE_LIMIT && (
                 <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center" onClick={() => setShowLoginModal(true)}>
                     <div className="bg-slate-800/90 p-8 rounded-2xl shadow-2xl w-full max-w-md relative text-center" onClick={e => e.stopPropagation()}>
                         <button className="absolute top-2 right-2 text-slate-400 hover:text-white" onClick={() => setShowLoginModal(false)}><X /></button>
