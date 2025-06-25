@@ -69,12 +69,10 @@ const App = () => {
                 if (currentUser) {
                     setUser(currentUser);
                 } else {
-                     try {
+                    try {
                         if (initialToken) {
                             await signInWithCustomToken(authInstance, initialToken);
-                        } else {
-                            await signInAnonymously(authInstance);
-                        }
+                        } 
                     } catch (authError) {
                         console.error("Authentication failed:", authError);
                         setFirebaseError("Could not connect to the authentication service.");
