@@ -213,13 +213,14 @@ const App = () => {
                 <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center" onClick={() => setShowOnboarding(false)}>
                     <div className="bg-slate-800/90 p-8 rounded-2xl shadow-2xl w-full max-w-lg relative text-center" onClick={e => e.stopPropagation()}>
                         <button className="absolute top-2 right-2 text-slate-400 hover:text-white" onClick={() => setShowOnboarding(false)}><X /></button>
-                        <h2 className="text-2xl font-bold mb-2">Welcome to TikTok Shop Genius!</h2>
+                        <h2 className="text-2xl font-bold mb-2">Welcome to Shop Trend Genius!</h2>
                         <ul className="text-left text-slate-300 mb-4 space-y-2">
                             <li>• <b>{DAILY_FREE_LIMIT}</b> free ideas per day as a guest</li>
                             <li>• <b>Genius</b> unlocks unlimited ideas, premium categories, and favorites</li>
                             <li>• Try "Trending Audio" for TikTok Shop-safe music</li>
                             <li>• Save your favorite ideas (sign up required)</li>
                         </ul>
+                        <div className="text-xs text-slate-400 mb-4">We are not affiliated with TikTok. TikTok is a trademark of ByteDance Ltd.</div>
                         <button className="bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold py-2 px-6 rounded-lg shadow-lg hover:scale-105 transition-all" onClick={() => setShowOnboarding(false)}>Get Started</button>
                     </div>
                 </div>
@@ -260,6 +261,7 @@ const App = () => {
                 {currentPage === 'pricing' && user && <PricingPage user={user} navigate={setCurrentPage} />}
                 <footer className="text-center mt-12 text-slate-500 text-sm">
                     <p>Powered by AI. Designed for creators.</p>
+                    <div className="text-xs text-slate-400 mt-2">We are not affiliated with TikTok. TikTok is a trademark of ByteDance Ltd.</div>
                     {user && <p className="mt-1 text-xs truncate">User ID: {user.uid}</p>}
                 </footer>
             </div>
@@ -290,6 +292,33 @@ const LoadingScreen = () => (
 const PricingPage = ({ user, navigate }) => {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState(null);
+    // Add a thank you state to show after purchase
+    const [showThankYou, setShowThankYou] = useState(false);
+    const [subscriptionActive, setSubscriptionActive] = useState(false);
+
+    useEffect(() => {
+        // Check if user has just upgraded (subscription active)
+        if (user && user.reload) {
+            user.reload().then(() => {
+                // If user object has custom claims or metadata, check here
+                // But since we don't have userData here, rely on location or props
+                // We'll show thank you if redirected from payment_success
+                const urlParams = new URLSearchParams(window.location.search);
+                if (urlParams.get('payment_success')) {
+                    setShowThankYou(true);
+                    // Remove param from URL
+                    window.history.replaceState(null, '', window.location.pathname);
+                }
+            });
+        } else {
+            // Fallback: check URL param
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.get('payment_success')) {
+                setShowThankYou(true);
+                window.history.replaceState(null, '', window.location.pathname);
+            }
+        }
+    }, [user]);
 
     const handleSubscribe = async () => {
         if (!VITE_STRIPE_PUBLISHABLE_KEY || !VITE_STRIPE_PRICE_ID) {
@@ -325,7 +354,13 @@ const PricingPage = ({ user, navigate }) => {
     
     return (
         <div className="flex flex-col items-center animate-fade-in">
-             <header className="text-center mb-10 relative w-full">
+            {showThankYou && (
+                <div className="w-full max-w-2xl mx-auto bg-green-600/10 border border-green-500/30 text-green-300 text-center p-4 rounded-lg mb-6">
+                    <h2 className="text-2xl font-bold mb-1">Thank you for your purchase!</h2>
+                    <p>Your Genius subscription is now active. Enjoy unlimited ideas and premium features!</p>
+                </div>
+            )}
+            <header className="text-center mb-10 relative w-full">
                  <button onClick={() => navigate('generator')} className="absolute top-0 left-0 text-slate-400 hover:text-white transition-colors"><X className="w-6 h-6" /></button>
                  <h1 className="text-4xl sm:text-5xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-purple-400 via-pink-500 to-red-500">Choose Your Plan</h1>
                  <p className="text-slate-400 text-lg max-w-2xl mx-auto mt-2">Unlock your full creative potential.</p>
@@ -613,8 +648,8 @@ const GeneratorTool = ({ user, db, userData, isSubscribed, navigate, guestGenera
 
     return (
         <div className="animate-fade-in">
-            {/* Guest-to-user upgrade modal when out of free generations */}
-            {!user && guestGenerations.lastReset === new Date().toISOString().split('T')[0] && guestGenerations.count >= DAILY_FREE_LIMIT && (
+            {/* Guest-to-user upgrade modal when out of free generations, only if login modal is not open */}
+            {!user && !showLoginModal && guestGenerations.lastReset === new Date().toISOString().split('T')[0] && guestGenerations.count >= DAILY_FREE_LIMIT && (
                 <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center" onClick={() => setShowLoginModal(true)}>
                     <div className="bg-slate-800/90 p-8 rounded-2xl shadow-2xl w-full max-w-md relative text-center" onClick={e => e.stopPropagation()}>
                         <button className="absolute top-2 right-2 text-slate-400 hover:text-white" onClick={() => setShowLoginModal(false)}><X /></button>
@@ -626,7 +661,7 @@ const GeneratorTool = ({ user, db, userData, isSubscribed, navigate, guestGenera
             )}
             <header className="text-center mb-10 flex flex-col sm:flex-row justify-between items-center gap-4">
                 <div>
-                    <h1 className="text-3xl sm:text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-purple-400 via-pink-500 to-red-500">TikTok Shop Genius</h1>
+                    <h1 className="text-3xl sm:text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-purple-400 via-pink-500 to-red-500">Shop Trend Genius</h1>
                     <p className="text-slate-400 text-lg">
                         {isSubscribed ? "Welcome, Genius Member!" : "Welcome! Let's create something viral."}
                     </p>
