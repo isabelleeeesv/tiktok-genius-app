@@ -19,29 +19,11 @@ import {
 } from 'firebase/firestore';
 import { Sparkles, Copy, Lightbulb, TrendingUp, Film, CheckCircle, Star, Music, FileText, X, Lock } from 'lucide-react';
 
-// This is a simple component to display our test variable.
-const DebugComponent = () => {
-    const testVar = import.meta.env.VITE_TEST_VAR;
-    const firebaseVar = import.meta.env.VITE_FIREBASE_CONFIG;
-
-    return (
-        <div className="fixed inset-0 bg-black text-white p-10 z-50">
-            <h1 className="text-2xl font-bold mb-4">Debugging Info</h1>
-            <div className="mb-4">
-                <p className="font-bold">Test Variable (VITE_TEST_VAR):</p>
-                {testVar ? <p className="text-green-400">{testVar}</p> : <p className="text-red-400">NOT FOUND</p>}
-            </div>
-            <div>
-                <p className="font-bold">Firebase Config (VITE_FIREBASE_CONFIG):</p>
-                {firebaseVar ? <p className="text-green-400">FOUND</p> : <p className="text-red-400">NOT FOUND</p>}
-            </div>
-             <p className="mt-8 text-yellow-400">Please take a screenshot of this page and share it.</p>
-        </div>
-    );
-}
-
-
 // --- CONSTANTS ---
+// This is a more robust way to access environment variables for production builds.
+const VITE_FIREBASE_CONFIG = import.meta.env.VITE_FIREBASE_CONFIG;
+const VITE_INITIAL_AUTH_TOKEN = import.meta.env.VITE_INITIAL_AUTH_TOKEN;
+const VITE_APP_ID = import.meta.env.VITE_APP_ID;
 const DAILY_FREE_LIMIT = 3;
 
 // --- MAIN APP COMPONENT ---
@@ -54,12 +36,11 @@ const App = () => {
     const [isAuthReady, setIsAuthReady] = useState(false);
     const [currentPage, setCurrentPage] = useState('generator');
     const [firebaseError, setFirebaseError] = useState(null);
-    const [runDebug, setRunDebug] = useState(true); // Set to true to show the debug screen
 
     // --- HOOKS ---
     const fetchUserData = useCallback(async () => {
         if (user && db) {
-            const appId = import.meta.env.VITE_APP_ID || (typeof __app_id !== 'undefined' ? __app_id : 'default-app-id');
+            const appId = VITE_APP_ID || (typeof __app_id !== 'undefined' ? __app_id : 'default-app-id');
             const userDocRef = doc(db, `artifacts/${appId}/users/${user.uid}`);
             const userDoc = await getDoc(userDocRef);
             if (userDoc.exists()) {
@@ -71,7 +52,7 @@ const App = () => {
     // --- FIREBASE INITIALIZATION & AUTHENTICATION ---
     useEffect(() => {
         try {
-            const firebaseConfigStr = import.meta.env.VITE_FIREBASE_CONFIG || (typeof __firebase_config !== 'undefined' ? __firebase_config : null);
+            const firebaseConfigStr = VITE_FIREBASE_CONFIG || (typeof __firebase_config !== 'undefined' ? __firebase_config : null);
 
             if (!firebaseConfigStr) {
                  setFirebaseError("Firebase configuration is missing. The app cannot start.");
@@ -88,7 +69,7 @@ const App = () => {
             setDb(dbInstance);
 
             const unsubscribeAuth = onAuthStateChanged(authInstance, async (currentUser) => {
-                const initialToken = import.meta.env.VITE_INITIAL_AUTH_TOKEN || (typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null);
+                const initialToken = VITE_INITIAL_AUTH_TOKEN || (typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null);
                 if (currentUser) {
                     setUser(currentUser);
                 } else {
@@ -120,7 +101,7 @@ const App = () => {
     useEffect(() => {
         let unsubscribeDb = () => {};
         if (user && db) {
-            const appId = import.meta.env.VITE_APP_ID || (typeof __app_id !== 'undefined' ? __app_id : 'default-app-id');
+            const appId = VITE_APP_ID || (typeof __app_id !== 'undefined' ? __app_id : 'default-app-id');
             const userDocRef = doc(db, `artifacts/${appId}/users/${user.uid}`);
 
             unsubscribeDb = onSnapshot(userDocRef, 
@@ -153,10 +134,6 @@ const App = () => {
     }, [user, db]); 
     
     // --- RENDER LOGIC ---
-    if(runDebug) {
-        return <DebugComponent />;
-    }
-
     if (!isAuthReady || (user && !userData) ) {
         return <LoadingScreen />;
     }
@@ -213,7 +190,7 @@ const PricingPage = ({ user, db, navigate, fetchUserData }) => {
         if (!user || !db) return;
         setIsLoading(true);
         try {
-            const appId = import.meta.env.VITE_APP_ID || 'default-app-id';
+            const appId = VITE_APP_ID || 'default-app-id';
             const userDocRef = doc(db, `artifacts/${appId}/users/${user.uid}`);
             const newSubscription = {
                 plan: 'Genius',
@@ -352,7 +329,7 @@ const GeneratorTool = ({ user, db, userData, isSubscribed, navigate }) => {
                 if (!parsedJson.ideas || parsedJson.ideas.length === 0) setError("The AI couldn't generate ideas for this topic.");
 
                 if (!isSubscribed && user && db) {
-                    const appId = import.meta.env.VITE_APP_ID || 'default-app-id';
+                    const appId = VITE_APP_ID || 'default-app-id';
                     const userDocRef = doc(db, `artifacts/${appId}/users/${user.uid}`);
                     const newCount = (generations?.lastReset === today) ? (generations.count || 0) + 1 : 1;
                     await updateDoc(userDocRef, { generations: { count: newCount, lastReset: today } });
@@ -388,7 +365,7 @@ const GeneratorTool = ({ user, db, userData, isSubscribed, navigate }) => {
         }
         if (!user || !db) return;
 
-        const appId = import.meta.env.VITE_APP_ID || 'default-app-id';
+        const appId = VITE_APP_ID || 'default-app-id';
         const userDocRef = doc(db, `artifacts/${appId}/users/${user.uid}`);
         
         try {
