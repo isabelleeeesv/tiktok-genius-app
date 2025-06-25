@@ -19,6 +19,28 @@ import {
 } from 'firebase/firestore';
 import { Sparkles, Copy, Lightbulb, TrendingUp, Film, CheckCircle, Star, Music, FileText, X, Lock } from 'lucide-react';
 
+// This is a simple component to display our test variable.
+const DebugComponent = () => {
+    const testVar = import.meta.env.VITE_TEST_VAR;
+    const firebaseVar = import.meta.env.VITE_FIREBASE_CONFIG;
+
+    return (
+        <div className="fixed inset-0 bg-black text-white p-10 z-50">
+            <h1 className="text-2xl font-bold mb-4">Debugging Info</h1>
+            <div className="mb-4">
+                <p className="font-bold">Test Variable (VITE_TEST_VAR):</p>
+                {testVar ? <p className="text-green-400">{testVar}</p> : <p className="text-red-400">NOT FOUND</p>}
+            </div>
+            <div>
+                <p className="font-bold">Firebase Config (VITE_FIREBASE_CONFIG):</p>
+                {firebaseVar ? <p className="text-green-400">FOUND</p> : <p className="text-red-400">NOT FOUND</p>}
+            </div>
+             <p className="mt-8 text-yellow-400">Please take a screenshot of this page and share it.</p>
+        </div>
+    );
+}
+
+
 // --- CONSTANTS ---
 const DAILY_FREE_LIMIT = 3;
 
@@ -32,15 +54,12 @@ const App = () => {
     const [isAuthReady, setIsAuthReady] = useState(false);
     const [currentPage, setCurrentPage] = useState('generator');
     const [firebaseError, setFirebaseError] = useState(null);
+    const [runDebug, setRunDebug] = useState(true); // Set to true to show the debug screen
 
     // --- HOOKS ---
-    // All hooks (useState, useEffect, useCallback) must be called at the top level
-    // and in the same order on every render.
-
-    // This function is now only used for one-off data fetches, like after an upgrade.
     const fetchUserData = useCallback(async () => {
         if (user && db) {
-            const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+            const appId = import.meta.env.VITE_APP_ID || (typeof __app_id !== 'undefined' ? __app_id : 'default-app-id');
             const userDocRef = doc(db, `artifacts/${appId}/users/${user.uid}`);
             const userDoc = await getDoc(userDocRef);
             if (userDoc.exists()) {
@@ -52,7 +71,8 @@ const App = () => {
     // --- FIREBASE INITIALIZATION & AUTHENTICATION ---
     useEffect(() => {
         try {
-            const firebaseConfigStr = typeof __firebase_config !== 'undefined' ? __firebase_config : null;
+            const firebaseConfigStr = import.meta.env.VITE_FIREBASE_CONFIG || (typeof __firebase_config !== 'undefined' ? __firebase_config : null);
+
             if (!firebaseConfigStr) {
                  setFirebaseError("Firebase configuration is missing. The app cannot start.");
                  setIsAuthReady(true);
@@ -68,12 +88,13 @@ const App = () => {
             setDb(dbInstance);
 
             const unsubscribeAuth = onAuthStateChanged(authInstance, async (currentUser) => {
+                const initialToken = import.meta.env.VITE_INITIAL_AUTH_TOKEN || (typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null);
                 if (currentUser) {
                     setUser(currentUser);
                 } else {
                      try {
-                        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                            await signInWithCustomToken(authInstance, __initial_auth_token);
+                        if (initialToken) {
+                            await signInWithCustomToken(authInstance, initialToken);
                         } else {
                             await signInAnonymously(authInstance);
                         }
@@ -93,22 +114,20 @@ const App = () => {
             setFirebaseError(`Failed to initialize Firebase services: ${error.message}`);
             setIsAuthReady(true);
         }
-    }, []); // Empty dependency array ensures this runs only once on mount
+    }, []); 
 
     // --- REAL-TIME USER DATA LISTENER ---
     useEffect(() => {
         let unsubscribeDb = () => {};
-        // Only attempt to fetch data if we have a user and a db connection
         if (user && db) {
-            const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+            const appId = import.meta.env.VITE_APP_ID || (typeof __app_id !== 'undefined' ? __app_id : 'default-app-id');
             const userDocRef = doc(db, `artifacts/${appId}/users/${user.uid}`);
 
             unsubscribeDb = onSnapshot(userDocRef, 
-                async (docSnap) => { // Success callback
+                async (docSnap) => { 
                     if (docSnap.exists()) {
                         setUserData(docSnap.data());
                     } else {
-                        // Create a new user profile if it doesn't exist on first load
                         const initialData = {
                             email: user.email || 'anonymous',
                             createdAt: serverTimestamp(),
@@ -118,25 +137,26 @@ const App = () => {
                         };
                         try {
                            await setDoc(userDocRef, initialData);
-                           // The onSnapshot listener will automatically set the userData state with this new data.
                         } catch(e) {
                            console.error("Error creating user document:", e);
                            setFirebaseError("Could not create user profile.");
                         }
                     }
                 },
-                (error) => { // Error callback
+                (error) => { 
                     console.error("Error fetching user data with onSnapshot:", error);
                     setFirebaseError("Could not retrieve user profile.");
                 }
             );
         }
-        // Cleanup: Unsubscribe from the listener when the user logs out or component unmounts
         return () => unsubscribeDb();
-    }, [user, db]); // This effect re-runs if the user or db connection changes
+    }, [user, db]); 
     
     // --- RENDER LOGIC ---
-    // Conditional returns must come *after* all hooks have been called.
+    if(runDebug) {
+        return <DebugComponent />;
+    }
+
     if (!isAuthReady || (user && !userData) ) {
         return <LoadingScreen />;
     }
@@ -150,12 +170,10 @@ const App = () => {
 
     return (
         <div className="min-h-screen bg-slate-900 text-white font-sans relative overflow-x-hidden">
-            {/* Background decorative blobs */}
             <div className="absolute top-0 left-0 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-purple-600/20 rounded-full filter blur-3xl opacity-50"></div>
             <div className="absolute bottom-0 right-0 translate-x-1/2 translate-y-1/2 w-[600px] h-[600px] bg-pink-500/20 rounded-full filter blur-3xl opacity-50"></div>
             
             <div className="relative z-10 p-4 sm:p-6 lg:p-8 w-full max-w-6xl mx-auto">
-                {/* Page content based on navigation state */}
                 {currentPage === 'generator' && <GeneratorTool user={user} db={db} userData={userData} fetchUserData={fetchUserData} isSubscribed={isSubscribed} navigate={navigate} />}
                 {currentPage === 'pricing' && <PricingPage user={user} db={db} navigate={navigate} fetchUserData={fetchUserData} />}
 
@@ -195,7 +213,7 @@ const PricingPage = ({ user, db, navigate, fetchUserData }) => {
         if (!user || !db) return;
         setIsLoading(true);
         try {
-            const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+            const appId = import.meta.env.VITE_APP_ID || 'default-app-id';
             const userDocRef = doc(db, `artifacts/${appId}/users/${user.uid}`);
             const newSubscription = {
                 plan: 'Genius',
@@ -203,7 +221,7 @@ const PricingPage = ({ user, db, navigate, fetchUserData }) => {
                 subscribedAt: serverTimestamp(),
             };
             await updateDoc(userDocRef, { subscription: newSubscription });
-            await fetchUserData(); // Manually refresh user data after this specific update
+            await fetchUserData();
             navigate('generator');
         } catch (error) {
             console.error("Subscription failed:", error);
@@ -315,7 +333,7 @@ const GeneratorTool = ({ user, db, userData, isSubscribed, navigate }) => {
             }
         };
 
-        const apiKey = "";
+        const apiKey = ""; 
         const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
 
         try {
@@ -334,11 +352,10 @@ const GeneratorTool = ({ user, db, userData, isSubscribed, navigate }) => {
                 if (!parsedJson.ideas || parsedJson.ideas.length === 0) setError("The AI couldn't generate ideas for this topic.");
 
                 if (!isSubscribed && user && db) {
-                    const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+                    const appId = import.meta.env.VITE_APP_ID || 'default-app-id';
                     const userDocRef = doc(db, `artifacts/${appId}/users/${user.uid}`);
                     const newCount = (generations?.lastReset === today) ? (generations.count || 0) + 1 : 1;
                     await updateDoc(userDocRef, { generations: { count: newCount, lastReset: today } });
-                    // onSnapshot will handle the UI update automatically
                 }
 
             } else {
@@ -371,7 +388,7 @@ const GeneratorTool = ({ user, db, userData, isSubscribed, navigate }) => {
         }
         if (!user || !db) return;
 
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const appId = import.meta.env.VITE_APP_ID || 'default-app-id';
         const userDocRef = doc(db, `artifacts/${appId}/users/${user.uid}`);
         
         try {
@@ -381,7 +398,6 @@ const GeneratorTool = ({ user, db, userData, isSubscribed, navigate }) => {
              } else {
                  await updateDoc(userDocRef, { favorites: arrayUnion({ ...idea, savedAt: new Date().toISOString() }) });
              }
-             // onSnapshot will handle the UI update automatically
         } catch(error) {
             console.error("Error toggling favorite:", error);
             setError("Could not update your favorites list.");
@@ -403,7 +419,6 @@ const GeneratorTool = ({ user, db, userData, isSubscribed, navigate }) => {
         document.body.removeChild(textArea);
     }
 
-    // --- RENDER ---
     return (
         <div className="animate-fade-in">
             <header className="text-center mb-10 flex flex-col sm:flex-row justify-between items-center gap-4">
