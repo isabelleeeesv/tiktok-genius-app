@@ -20,10 +20,10 @@ import {
 import { Sparkles, Copy, Lightbulb, TrendingUp, Film, CheckCircle, Star, Music, FileText, X, Lock } from 'lucide-react';
 
 // --- CONSTANTS ---
-// This is a more robust way to access environment variables for production builds.
 const VITE_FIREBASE_CONFIG = import.meta.env.VITE_FIREBASE_CONFIG;
 const VITE_INITIAL_AUTH_TOKEN = import.meta.env.VITE_INITIAL_AUTH_TOKEN;
 const VITE_APP_ID = import.meta.env.VITE_APP_ID;
+const VITE_GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY; // <-- ADDED
 const DAILY_FREE_LIMIT = 3;
 
 // --- MAIN APP COMPONENT ---
@@ -310,7 +310,7 @@ const GeneratorTool = ({ user, db, userData, isSubscribed, navigate }) => {
             }
         };
 
-        const apiKey = ""; 
+        const apiKey = VITE_GEMINI_API_KEY || ""; // <-- UPDATED
         const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
 
         try {
