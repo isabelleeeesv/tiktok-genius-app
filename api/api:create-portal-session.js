@@ -2,19 +2,19 @@ import { initializeApp, getApps, cert } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import Stripe from 'stripe';
 
-// Use environment variables without the VITE_ prefix for server-side code
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+// Use new, unique environment variable names for server-side code
+const stripe = new Stripe(process.env.STRIPE_API_SECRET);
 
 // Initialize Firebase Admin SDK
 let serviceAccount;
 try {
-  if (!process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
-    throw new Error('FIREBASE_SERVICE_ACCOUNT_KEY environment variable is not set.');
+  if (!process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
+    throw new Error('FIREBASE_SERVICE_ACCOUNT_JSON environment variable is not set.');
   }
-  serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY);
+  serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
 } catch (e) {
-  console.error('Failed to parse Firebase service account key. Ensure it is a valid JSON string in your environment variables.');
-  throw new Error('Firebase service account key is invalid.');
+  console.error('Failed to parse Firebase service account key:', e.message);
+  throw new Error('Firebase service account key is invalid or not found.');
 }
 
 if (!getApps().length) {
@@ -59,6 +59,6 @@ export default async function handler(req, res) {
     res.status(200).json({ url: portalSession.url });
   } catch (error) {
     console.error('Error creating portal session:', error.message);
-    res.status(500).json({ error: 'An internal error occurred.' });
+    res.status(500).json({ error: 'An internal server error occurred.' });
   }
 }

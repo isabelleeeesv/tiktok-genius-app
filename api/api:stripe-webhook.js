@@ -3,20 +3,20 @@ import { getFirestore } from 'firebase-admin/firestore';
 import Stripe from 'stripe';
 import { buffer } from 'micro';
 
-// Use environment variables without the VITE_ prefix for server-side code
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
-const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+// Use new, unique environment variable names for server-side code
+const stripe = new Stripe(process.env.STRIPE_API_SECRET);
+const webhookSecret = process.env.STRIPE_SIGNING_SECRET;
 
 // Initialize Firebase Admin SDK
 let serviceAccount;
 try {
-  if (!process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
-    throw new Error('FIREBASE_SERVICE_ACCOUNT_KEY environment variable is not set.');
+  if (!process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
+    throw new Error('FIREBASE_SERVICE_ACCOUNT_JSON environment variable is not set.');
   }
-  serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY);
+  serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
 } catch (e) {
-  console.error('Failed to parse Firebase service account key. Ensure it is a valid JSON string in your environment variables.');
-  throw new Error('Firebase service account key is invalid.');
+  console.error('Failed to parse Firebase service account key:', e.message);
+  throw new Error('Firebase service account key is invalid or not found.');
 }
 
 if (!getApps().length) {
@@ -44,6 +44,9 @@ export default async function handler(req, res) {
   let event;
 
   try {
+    if (!webhookSecret) {
+        throw new Error("Stripe webhook secret is not configured.");
+    }
     event = stripe.webhooks.constructEvent(buf, sig, webhookSecret);
   } catch (err) {
     console.error(`Webhook signature verification failed: ${err.message}`);
