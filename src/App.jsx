@@ -256,6 +256,7 @@ const App = () => {
                         showLoginModal={showLoginModal}
                         setShowLoginModal={setShowLoginModal}
                         remainingGenerations={remainingGenerations}
+                        auth={auth} // Pass auth to GeneratorTool
                     />
                 )}
                 {currentPage === 'pricing' && user && <PricingPage user={user} navigate={setCurrentPage} />}
@@ -478,7 +479,7 @@ const LoginPage = ({ auth, setUser, navigate, onClose }) => {
 };
 
 // --- GeneratorTool ---
-const GeneratorTool = ({ user, db, userData, isSubscribed, navigate, guestGenerations, setGuestGenerations, showLoginModal, setShowLoginModal, remainingGenerations }) => {
+const GeneratorTool = ({ user, db, userData, isSubscribed, navigate, guestGenerations, setGuestGenerations, showLoginModal, setShowLoginModal, remainingGenerations, auth }) => {
     // --- STATE & CONSTANTS ---
     const [product, setProduct] = useState('');
     const [ideaType, setIdeaType] = useState('Hooks');
@@ -692,10 +693,14 @@ const GeneratorTool = ({ user, db, userData, isSubscribed, navigate, guestGenera
                         <button
                             onClick={async () => {
                                 setLogoutLoading(true);
-                                await signOut(auth);
-                                setUser(null);
-                                setLogoutLoading(false);
-                                navigate('generator');
+                                try {
+                                    await signOut(auth);
+                                    setLogoutLoading(false);
+                                    window.location.reload(); // Force reload to clear state and re-init auth
+                                } catch (e) {
+                                    setLogoutLoading(false);
+                                    alert('Logout failed. Please try again.');
+                                }
                             }}
                             disabled={logoutLoading}
                             className="ml-4 text-slate-400 hover:text-white border border-slate-700 px-3 py-2 rounded-lg disabled:opacity-50"
