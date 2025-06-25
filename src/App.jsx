@@ -18,12 +18,15 @@ import {
     onSnapshot
 } from 'firebase/firestore';
 import { Sparkles, Copy, Lightbulb, TrendingUp, Film, CheckCircle, Star, Music, FileText, X, Lock } from 'lucide-react';
+import { loadStripe } from '@stripe/stripe-js';
 
 // --- CONSTANTS ---
 const VITE_FIREBASE_CONFIG = import.meta.env.VITE_FIREBASE_CONFIG;
 const VITE_INITIAL_AUTH_TOKEN = import.meta.env.VITE_INITIAL_AUTH_TOKEN;
 const VITE_APP_ID = import.meta.env.VITE_APP_ID;
-const VITE_GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY; // <-- ADDED
+const VITE_GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
+const VITE_STRIPE_PUBLISHABLE_KEY = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY;
+const VITE_STRIPE_PRICE_ID = import.meta.env.VITE_STRIPE_PRICE_ID;
 const DAILY_FREE_LIMIT = 3;
 
 // --- MAIN APP COMPONENT ---
@@ -36,6 +39,8 @@ const App = () => {
     const [isAuthReady, setIsAuthReady] = useState(false);
     const [currentPage, setCurrentPage] = useState('generator');
     const [firebaseError, setFirebaseError] = useState(null);
+
+    const navigate = useCallback((page) => setCurrentPage(page), []);
 
     // --- HOOKS ---
     const fetchUserData = useCallback(async () => {
@@ -133,6 +138,35 @@ const App = () => {
         return () => unsubscribeDb();
     }, [user, db]); 
     
+    // --- HANDLE STRIPE REDIRECT ---
+    useEffect(() => {
+        const query = new URLSearchParams(window.location.search);
+
+        if (query.get("payment_success") && user && db) {
+            const appId = VITE_APP_ID || (typeof __app_id !== 'undefined' ? __app_id : 'default-app-id');
+            const userDocRef = doc(db, `artifacts/${appId}/users/${user.uid}`);
+            
+            updateDoc(userDocRef, {
+                subscription: {
+                    status: 'active',
+                    plan: 'Genius',
+                    subscribedAt: serverTimestamp()
+                }
+            }).then(() => {
+                window.history.replaceState(null, '', window.location.pathname);
+                navigate('generator');
+            }).catch(error => {
+                console.error("Firestore update failed after payment:", error);
+                setFirebaseError("Payment successful, but we couldn't update your account. Please contact support.");
+            });
+        }
+
+        if (query.get("payment_canceled")) {
+            window.history.replaceState(null, '', window.location.pathname);
+        }
+    }, [user, db, navigate]);
+
+
     // --- RENDER LOGIC ---
     if (!isAuthReady || (user && !userData) ) {
         return <LoadingScreen />;
@@ -143,7 +177,6 @@ const App = () => {
     }
     
     const isSubscribed = userData?.subscription?.status === 'active';
-    const navigate = (page) => setCurrentPage(page);
 
     return (
         <div className="min-h-screen bg-slate-900 text-white font-sans relative overflow-x-hidden">
@@ -151,8 +184,8 @@ const App = () => {
             <div className="absolute bottom-0 right-0 translate-x-1/2 translate-y-1/2 w-[600px] h-[600px] bg-pink-500/20 rounded-full filter blur-3xl opacity-50"></div>
             
             <div className="relative z-10 p-4 sm:p-6 lg:p-8 w-full max-w-6xl mx-auto">
-                {currentPage === 'generator' && <GeneratorTool user={user} db={db} userData={userData} fetchUserData={fetchUserData} isSubscribed={isSubscribed} navigate={navigate} />}
-                {currentPage === 'pricing' && <PricingPage user={user} db={db} navigate={navigate} fetchUserData={fetchUserData} />}
+                {currentPage === 'generator' && <GeneratorTool user={user} db={db} userData={userData} isSubscribed={isSubscribed} navigate={navigate} />}
+                {currentPage === 'pricing' && <PricingPage user={user} navigate={navigate} />}
 
                 <footer className="text-center mt-12 text-slate-500 text-sm">
                     <p>Powered by AI. Designed for creators.</p>
@@ -183,26 +216,37 @@ const LoadingScreen = () => (
     </div>
 );
 
-const PricingPage = ({ user, db, navigate, fetchUserData }) => {
+const PricingPage = ({ user, navigate }) => {
     const [isLoading, setIsLoading] = useState(false);
+    const [error, setError] = useState(null);
 
     const handleSubscribe = async () => {
-        if (!user || !db) return;
+        if (!VITE_STRIPE_PUBLISHABLE_KEY || !VITE_STRIPE_PRICE_ID) {
+            setError("Payments are not configured correctly. Please contact support.");
+            console.error("Stripe keys not found in environment variables.");
+            return;
+        }
+
         setIsLoading(true);
+        setError(null);
+
         try {
-            const appId = VITE_APP_ID || 'default-app-id';
-            const userDocRef = doc(db, `artifacts/${appId}/users/${user.uid}`);
-            const newSubscription = {
-                plan: 'Genius',
-                status: 'active',
-                subscribedAt: serverTimestamp(),
-            };
-            await updateDoc(userDocRef, { subscription: newSubscription });
-            await fetchUserData();
-            navigate('generator');
-        } catch (error) {
-            console.error("Subscription failed:", error);
-        } finally {
+            const stripe = await loadStripe(VITE_STRIPE_PUBLISHABLE_KEY);
+            const { error } = await stripe.redirectToCheckout({
+                lineItems: [{ price: VITE_STRIPE_PRICE_ID, quantity: 1 }],
+                mode: 'subscription',
+                successUrl: `${window.location.href.split('?')[0]}?payment_success=true`,
+                cancelUrl: `${window.location.href.split('?')[0]}?payment_canceled=true`,
+                customerEmail: user?.email,
+                automaticTax: { enabled: true },
+            });
+
+            if (error) {
+                setError(error.message);
+                setIsLoading(false);
+            }
+        } catch (err) {
+            setError("An unexpected error occurred. Please try again.");
             setIsLoading(false);
         }
     };
@@ -214,6 +258,7 @@ const PricingPage = ({ user, db, navigate, fetchUserData }) => {
                  <h1 className="text-4xl sm:text-5xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-purple-400 via-pink-500 to-red-500">Choose Your Plan</h1>
                  <p className="text-slate-400 text-lg max-w-2xl mx-auto mt-2">Unlock your full creative potential.</p>
              </header>
+             {error && <p className="text-red-400 text-center mb-4">{error}</p>}
              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full max-w-4xl">
                  <div className="bg-slate-800/50 border border-slate-700 rounded-2xl p-8 shadow-xl">
                      <h2 className="text-2xl font-bold text-center">Starter</h2>
@@ -282,6 +327,10 @@ const GeneratorTool = ({ user, db, userData, isSubscribed, navigate }) => {
     }
 
     const handleGenerateIdeas = async () => {
+        if (!VITE_GEMINI_API_KEY) {
+            setError("AI service is not configured. Please contact support.");
+            return;
+        }
         if (!isSubscribed && remainingGenerations <= 0) {
             setError("You've reached your daily free limit. Upgrade to Genius for unlimited generations.");
             return;
@@ -310,7 +359,7 @@ const GeneratorTool = ({ user, db, userData, isSubscribed, navigate }) => {
             }
         };
 
-        const apiKey = VITE_GEMINI_API_KEY || ""; // <-- UPDATED
+        const apiKey = VITE_GEMINI_API_KEY;
         const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
 
         try {
