@@ -2,18 +2,18 @@ import { initializeApp, getApps, cert } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import Stripe from 'stripe';
 
-// Use new, unique environment variable names for server-side code
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY_LIVE);
 
-// Initialize Firebase Admin SDK
+// Decode the Base64 service account key
 let serviceAccount;
 try {
-  if (!process.env.GC_SERVICE_ACCOUNT_KEY) {
-    throw new Error('GC_SERVICE_ACCOUNT_KEY environment variable is not set.');
+  if (!process.env.FIREBASE_SERVICE_ACCOUNT_BASE64) {
+    throw new Error('FIREBASE_SERVICE_ACCOUNT_BASE64 environment variable is not set.');
   }
-  serviceAccount = JSON.parse(process.env.GC_SERVICE_ACCOUNT_KEY);
+  const decodedKey = Buffer.from(process.env.FIREBASE_SERVICE_ACCOUNT_BASE64, 'base64').toString('utf-8');
+  serviceAccount = JSON.parse(decodedKey);
 } catch (e) {
-  console.error('Failed to parse Firebase service account key:', e.message);
+  console.error('Failed to decode or parse Firebase service account key:', e.message);
   throw new Error('Firebase service account key is invalid or not found.');
 }
 
