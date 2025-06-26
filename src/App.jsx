@@ -181,7 +181,7 @@ const App = () => {
             case 'manage-subscription':
                 return <ManageSubscriptionPage user={user} navigate={setCurrentPage} />;
             default:
-                return <GeneratorTool auth={auth} user={user} db={db} userData={userData} navigate={setCurrentPage} guestGenerations={guestGenerations} setGuestGenerations={setSetGuestGenerations} setShowLoginModal={setShowLoginModal} />;
+                return <GeneratorTool auth={auth} user={user} db={db} userData={userData} navigate={setCurrentPage} guestGenerations={guestGenerations} setGuestGenerations={setGuestGenerations} setShowLoginModal={setShowLoginModal} />;
         }
     }
 
