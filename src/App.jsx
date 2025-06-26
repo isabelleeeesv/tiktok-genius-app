@@ -3,8 +3,6 @@ import { initializeApp } from 'firebase/app';
 import { 
     getAuth, 
     onAuthStateChanged, 
-    signInAnonymously,
-    signInWithCustomToken,
     signInWithEmailAndPassword,
     createUserWithEmailAndPassword,
     signOut 
@@ -26,7 +24,6 @@ import { Analytics } from '@vercel/analytics/react';
 
 // --- CONSTANTS ---
 const VITE_FIREBASE_CONFIG = import.meta.env.VITE_FIREBASE_CONFIG;
-const VITE_INITIAL_AUTH_TOKEN = import.meta.env.VITE_INITIAL_AUTH_TOKEN;
 const VITE_APP_ID = import.meta.env.VITE_APP_ID;
 const VITE_GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
 const VITE_STRIPE_PUBLISHABLE_KEY = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY;
@@ -43,32 +40,23 @@ const App = () => {
     const [isAuthReady, setIsAuthReady] = useState(false);
     const [currentPage, setCurrentPage] = useState('generator');
     const [firebaseError, setFirebaseError] = useState(null);
-    const [showLoginModal, setShowLoginModal] = useState(false); // NEW
-    const [guestGenerations, setGuestGenerations] = useState({ count: 0, lastResetTimestamp: '' }); // NEW
-    const [showOnboarding, setShowOnboarding] = useState(false); // Onboarding modal
+    const [showLoginModal, setShowLoginModal] = useState(false);
+    const [guestGenerations, setGuestGenerations] = useState({ count: 0, lastReset: '' });
+    const [showOnboarding, setShowOnboarding] = useState(false);
 
     const navigate = useCallback((page) => setCurrentPage(page), []);
-
+    
     // --- GUEST GENERATION TRACKING ---
     useEffect(() => {
-        // Only for guests
         if (!user) {
             const stored = JSON.parse(localStorage.getItem('guestGenerations') || '{}');
-            const now = Date.now();
-            if (!stored.lastResetTimestamp) {
-                // First time use
-                const newState = { count: 0, lastResetTimestamp: now };
+            const today = new Date().toISOString().split('T')[0];
+            if (stored.lastReset !== today) {
+                const newState = { count: 0, lastReset: today };
                 setGuestGenerations(newState);
                 localStorage.setItem('guestGenerations', JSON.stringify(newState));
             } else {
-                // Check if 24 hours have passed since last reset
-                if (now - stored.lastResetTimestamp >= 24 * 60 * 60 * 1000) {
-                    const newState = { count: 0, lastResetTimestamp: now };
-                    setGuestGenerations(newState);
-                    localStorage.setItem('guestGenerations', JSON.stringify(newState));
-                } else {
-                    setGuestGenerations(stored);
-                }
+                setGuestGenerations(stored);
             }
         }
     }, [user]);
@@ -92,20 +80,8 @@ const App = () => {
             setAuth(authInstance);
             setDb(dbInstance);
 
-            const unsubscribeAuth = onAuthStateChanged(authInstance, async (currentUser) => {
-                const initialToken = VITE_INITIAL_AUTH_TOKEN || (typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null);
-                if (currentUser) {
-                    setUser(currentUser);
-                } else {
-                    try {
-                        if (initialToken) {
-                            await signInWithCustomToken(authInstance, initialToken);
-                        } 
-                    } catch (authError) {
-                        console.error("Authentication failed:", authError);
-                        setFirebaseError("Could not connect to the authentication service.");
-                    }
-                }
+            const unsubscribeAuth = onAuthStateChanged(authInstance, (currentUser) => {
+                setUser(currentUser);
                 if (!isAuthReady) {
                    setIsAuthReady(true);
                 }
@@ -134,9 +110,9 @@ const App = () => {
                         if (data?.subscription?.status === 'active' && currentPage === 'pricing') {
                             navigate('generator');
                         }
-                    } else {
+                    } else if (user && !user.isAnonymous) { // Only create doc if a real user is logged in
                         const initialData = {
-                            email: user.email || 'anonymous',
+                            email: user.email,
                             createdAt: serverTimestamp(),
                             generations: { count: 0, lastReset: new Date().toISOString().split('T')[0] },
                             favorites: [],
@@ -156,6 +132,8 @@ const App = () => {
                     setFirebaseError("Could not retrieve user profile.");
                 }
             );
+        } else {
+            setUserData(null); // Clear user data on logout
         }
         return () => unsubscribeDb();
     }, [user, db, currentPage, navigate]); 
@@ -174,119 +152,71 @@ const App = () => {
         }
     }, [navigate]);
 
-
-    // --- REMOVE FORCED LOGIN REDIRECT ---
-    // (No longer force login for guests)
-
-    // --- Show onboarding on first visit ---
+    // --- ONBOARDING ---
     useEffect(() => {
         if (!localStorage.getItem('seenOnboarding')) {
             setShowOnboarding(true);
-            localStorage.setItem('seenOnboarding', '1');
+            localStorage.setItem('seenOnboarding', 'true');
         }
     }, []);
-
+    
     // --- RENDER LOGIC ---
-    if (!isAuthReady || (user && !userData) ) {
+    if (!isAuthReady) {
         return <LoadingScreen />;
     }
-
+    
     if (firebaseError) {
         return <ErrorScreen message={firebaseError} />
     }
 
-    const isSubscribed = userData?.subscription?.status === 'active';
-    // For guests, use localStorage for free limit
-    const today = new Date().toISOString().split('T')[0];
-    let remainingGenerations = DAILY_FREE_LIMIT;
-    if (user) {
-        if (!isSubscribed) {
-            if (userData?.generations?.lastResetTimestamp) {
-                const now = Date.now();
-                const lastReset = userData.generations.lastResetTimestamp;
-                if (now - lastReset >= 24 * 60 * 60 * 1000) {
-                    remainingGenerations = DAILY_FREE_LIMIT;
-                } else {
-                    remainingGenerations = DAILY_FREE_LIMIT - (userData.generations.count || 0);
+    const renderPage = () => {
+        // Always show the generator tool. The tool itself will handle guest/user differences.
+        switch(currentPage) {
+            case 'pricing':
+                if (!user) {
+                    setShowLoginModal(true);
+                    return <GeneratorTool auth={auth} user={user} db={db} userData={userData} navigate={setCurrentPage} guestGenerations={guestGenerations} setGuestGenerations={setGuestGenerations} setShowLoginModal={setShowLoginModal} />;
                 }
-            } else {
-                remainingGenerations = DAILY_FREE_LIMIT;
-            }
-        } else {
-            remainingGenerations = 'Unlimited';
-        }
-    } else {
-        if (guestGenerations.lastResetTimestamp) {
-            const now = Date.now();
-            const lastReset = guestGenerations.lastResetTimestamp;
-            if (now - lastReset >= 24 * 60 * 60 * 1000) {
-                remainingGenerations = DAILY_FREE_LIMIT;
-            } else {
-                remainingGenerations = DAILY_FREE_LIMIT - (guestGenerations.count || 0);
-            }
-        } else {
-            remainingGenerations = DAILY_FREE_LIMIT;
+                return <PricingPage user={user} navigate={setCurrentPage} />;
+            default:
+                return <GeneratorTool auth={auth} user={user} db={db} userData={userData} navigate={setCurrentPage} guestGenerations={guestGenerations} setGuestGenerations={setGuestGenerations} setShowLoginModal={setShowLoginModal} />;
         }
     }
 
-    // --- MAIN RENDER ---
     return (
         <div className="min-h-screen bg-slate-900 text-white font-sans relative overflow-x-hidden">
-            {/* Onboarding Modal */}
             {showOnboarding && (
-                <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center" onClick={() => setShowOnboarding(false)}>
+                <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4" onClick={() => setShowOnboarding(false)}>
                     <div className="bg-slate-800/90 p-8 rounded-2xl shadow-2xl w-full max-w-lg relative text-center" onClick={e => e.stopPropagation()}>
                         <button className="absolute top-2 right-2 text-slate-400 hover:text-white" onClick={() => setShowOnboarding(false)}><X /></button>
                         <h2 className="text-2xl font-bold mb-2">Welcome to Shop Trend Genius!</h2>
-                        <ul className="text-left text-slate-300 mb-4 space-y-2">
-                            <li>• <b>{DAILY_FREE_LIMIT}</b> free ideas per day as a guest</li>
-                            <li>• <b>Genius</b> unlocks unlimited ideas, premium categories, and favorites</li>
-                            <li>• Try "Trending Audio" for TikTok Shop-safe music</li>
-                            <li>• Save your favorite ideas (sign up required)</li>
+                        <ul className="text-left text-slate-300 mb-4 space-y-2 pl-4">
+                            <li>• Get <b>{DAILY_FREE_LIMIT} free ideas</b> per day as a guest.</li>
+                            <li>• <b>Sign up</b> to save favorites and get more daily ideas.</li>
+                            <li>• Go <b>Genius</b> for unlimited ideas & premium categories.</li>
                         </ul>
                         <div className="text-xs text-slate-400 mb-4">We are not affiliated with TikTok. TikTok is a trademark of ByteDance Ltd.</div>
                         <button className="bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold py-2 px-6 rounded-lg shadow-lg hover:scale-105 transition-all" onClick={() => setShowOnboarding(false)}>Get Started</button>
                     </div>
                 </div>
             )}
+            {showLoginModal && (
+                 <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={() => setShowLoginModal(false)}>
+                    <div className="bg-slate-800/90 rounded-xl shadow-2xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+                        <LoginPage auth={auth} navigate={() => { setShowLoginModal(false); setCurrentPage('generator'); }} onClose={() => setShowLoginModal(false)} />
+                    </div>
+                </div>
+            )}
+
             <div className="absolute top-0 left-0 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-purple-600/20 rounded-full filter blur-3xl opacity-50"></div>
             <div className="absolute bottom-0 right-0 translate-x-1/2 translate-y-1/2 w-[600px] h-[600px] bg-pink-500/20 rounded-full filter blur-3xl opacity-50"></div>
+            
             <div className="relative z-10 p-4 sm:p-6 lg:p-8 w-full max-w-6xl mx-auto">
-                {/* Persistent Upgrade CTA for free users */}
-                {!user || (user && !isSubscribed) ? (
-                    <button onClick={() => user ? navigate('pricing') : setShowLoginModal(true)} className="fixed bottom-6 right-6 z-40 bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold py-3 px-6 rounded-full shadow-lg hover:scale-105 transition-all text-base sm:text-lg">
-                        {user ? 'Upgrade to Genius ✨' : 'Sign Up for Genius ✨'}
-                    </button>
-                ) : null}
-                {/* Show login modal if requested or if guest is out of free generations */}
-                {showLoginModal && (
-                    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center" onClick={() => setShowLoginModal(false)}>
-                        <div className="bg-slate-800/90 p-8 rounded-xl shadow-2xl w-full max-w-md relative" onClick={e => e.stopPropagation()}>
-                            <button className="absolute top-2 right-2 text-slate-400 hover:text-white" onClick={() => setShowLoginModal(false)}><X /></button>
-                            <LoginPage auth={auth} setUser={setUser} navigate={() => { setShowLoginModal(false); setCurrentPage('generator'); }} />
-                        </div>
-                    </div>
-                )}
-                {/* Generator always visible, pass guest/paid/free info */}
-                {currentPage === 'generator' && (
-                    <GeneratorTool
-                        user={user}
-                        db={db}
-                        userData={userData}
-                        isSubscribed={isSubscribed}
-                        navigate={setCurrentPage}
-                        guestGenerations={guestGenerations}
-                        setGuestGenerations={setGuestGenerations}
-                        showLoginModal={showLoginModal}
-                        setShowLoginModal={setShowLoginModal}
-                        remainingGenerations={remainingGenerations}
-                        auth={auth} // Pass auth to GeneratorTool
-                    />
-                )}
-                {currentPage === 'pricing' && user && <PricingPage user={user} navigate={setCurrentPage} />}
+                {renderPage()}
+                
                 <footer className="text-center mt-12 text-slate-500 text-sm">
                     <p>Powered by AI. Designed for creators.</p>
-                    <div className="text-xs text-slate-400 mt-2">We are not affiliated with TikTok. TikTok is a trademark of ByteDance Ltd.</div>
+                     <div className="text-xs text-slate-400 mt-2">We are not affiliated with TikTok. TikTok is a trademark of ByteDance Ltd.</div>
                     {user && <p className="mt-1 text-xs truncate">User ID: {user.uid}</p>}
                 </footer>
             </div>
@@ -318,38 +248,10 @@ const LoadingScreen = () => (
 const PricingPage = ({ user, navigate }) => {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState(null);
-    // Add a thank you state to show after purchase
-    const [showThankYou, setShowThankYou] = useState(false);
-    const [subscriptionActive, setSubscriptionActive] = useState(false);
-
-    useEffect(() => {
-        // Check if user has just upgraded (subscription active)
-        if (user && user.reload) {
-            user.reload().then(() => {
-                // If user object has custom claims or metadata, check here
-                // But since we don't have userData here, rely on location or props
-                // We'll show thank you if redirected from payment_success
-                const urlParams = new URLSearchParams(window.location.search);
-                if (urlParams.get('payment_success')) {
-                    setShowThankYou(true);
-                    // Remove param from URL
-                    window.history.replaceState(null, '', window.location.pathname);
-                }
-            });
-        } else {
-            // Fallback: check URL param
-            const urlParams = new URLSearchParams(window.location.search);
-            if (urlParams.get('payment_success')) {
-                setShowThankYou(true);
-                window.history.replaceState(null, '', window.location.pathname);
-            }
-        }
-    }, [user]);
 
     const handleSubscribe = async () => {
         if (!VITE_STRIPE_PUBLISHABLE_KEY || !VITE_STRIPE_PRICE_ID) {
             setError("Payments are not configured correctly. Please contact support.");
-            console.error("Stripe keys not found in environment variables.");
             return;
         }
 
@@ -361,38 +263,31 @@ const PricingPage = ({ user, navigate }) => {
             const { error } = await stripe.redirectToCheckout({
                 lineItems: [{ price: VITE_STRIPE_PRICE_ID, quantity: 1 }],
                 mode: 'subscription',
-                successUrl: `${window.location.origin}?payment_success=true`,
-                cancelUrl: `${window.location.origin}?payment_canceled=true`,
+                successUrl: `${window.location.origin}/?payment_success=true`,
+                cancelUrl: `${window.location.origin}/`,
                 customerEmail: user?.isAnonymous ? '' : user?.email,
-                clientReferenceId: user?.uid,
-                automaticTax: { enabled: true },
+                clientReferenceId: user?.uid
             });
 
             if (error) {
-                setError(error.message);
+                setError(error.message); // Will show the specific error from Stripe
                 setIsLoading(false);
             }
         } catch (err) {
-            console.error(err); // <-- Added for debugging Stripe integration errors
-            setError("An unexpected error occurred. Please try again.");
+            setError(err.message || "An unexpected error occurred. Please try again."); // Will catch other errors
             setIsLoading(false);
+            console.error(err);
         }
     };
     
     return (
         <div className="flex flex-col items-center animate-fade-in">
-            {showThankYou && (
-                <div className="w-full max-w-2xl mx-auto bg-green-600/10 border border-green-500/30 text-green-300 text-center p-4 rounded-lg mb-6">
-                    <h2 className="text-2xl font-bold mb-1">Thank you for your purchase!</h2>
-                    <p>Your Genius subscription is now active. Enjoy unlimited ideas and premium features!</p>
-                </div>
-            )}
-            <header className="text-center mb-10 relative w-full">
+             <header className="text-center mb-10 relative w-full">
                  <button onClick={() => navigate('generator')} className="absolute top-0 left-0 text-slate-400 hover:text-white transition-colors"><X className="w-6 h-6" /></button>
                  <h1 className="text-4xl sm:text-5xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-purple-400 via-pink-500 to-red-500">Choose Your Plan</h1>
                  <p className="text-slate-400 text-lg max-w-2xl mx-auto mt-2">Unlock your full creative potential.</p>
              </header>
-             {error && <p className="text-red-400 text-center mb-4">{error}</p>}
+             {error && <p className="text-red-400 text-center mb-4 break-words">Error: {error}</p>}
              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full max-w-4xl">
                  <div className="bg-slate-800/50 border border-slate-700 rounded-2xl p-8 shadow-xl">
                      <h2 className="text-2xl font-bold text-center">Starter</h2>
@@ -430,7 +325,7 @@ const PricingPage = ({ user, navigate }) => {
     );
 };
 
-const LoginPage = ({ auth, setUser, navigate, onClose }) => {
+const LoginPage = ({ auth, navigate, onClose }) => {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState(null);
@@ -443,69 +338,61 @@ const LoginPage = ({ auth, setUser, navigate, onClose }) => {
         setLoading(true);
         try {
             if (isLogin) {
-                const userCred = await signInWithEmailAndPassword(auth, email, password);
-                setUser(userCred.user);
-                navigate('generator');
+                await signInWithEmailAndPassword(auth, email, password);
             } else {
-                const userCred = await createUserWithEmailAndPassword(auth, email, password);
-                setUser(userCred.user);
-                navigate('generator');
+                await createUserWithEmailAndPassword(auth, email, password);
             }
+            if(onClose) onClose();
         } catch (err) {
-            setError(err.message);
+            setError(err.message.replace('Firebase: ',''));
         } finally {
             setLoading(false);
         }
     };
 
     return (
-        <div className="flex flex-col items-center justify-center min-h-screen">
-            <div className="bg-slate-800/80 p-8 rounded-xl shadow-lg w-full max-w-md relative">
-                {onClose && (
-                    <button onClick={onClose} className="absolute top-2 right-2 text-slate-400 hover:text-white"><X /></button>
-                )}
-                <h2 className="text-2xl font-bold mb-4 text-center">{isLogin ? 'Login' : 'Sign Up'}</h2>
-                {error && <div className="text-red-400 mb-2 text-center">{error}</div>}
-                <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-                    <input
-                        type="email"
-                        value={email}
-                        onChange={e => setEmail(e.target.value)}
-                        placeholder="Email"
-                        className="bg-slate-900/80 border border-slate-700 rounded-lg px-4 py-3 text-white placeholder-slate-500 focus:ring-2 focus:ring-purple-500/50 focus:outline-none transition-all"
-                        required
-                    />
-                    <input
-                        type="password"
-                        value={password}
-                        onChange={e => setPassword(e.target.value)}
-                        placeholder="Password"
-                        className="bg-slate-900/80 border border-slate-700 rounded-lg px-4 py-3 text-white placeholder-slate-500 focus:ring-2 focus:ring-purple-500/50 focus:outline-none transition-all"
-                        required
-                    />
-                    <button
-                        type="submit"
-                        disabled={loading}
-                        className="bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:scale-105 disabled:opacity-50 transition-all"
-                    >
-                        {loading ? (isLogin ? 'Logging in...' : 'Signing up...') : (isLogin ? 'Login' : 'Sign Up')}
-                    </button>
-                </form>
-                <div className="text-center mt-4">
-                    <button
-                        className="text-purple-400 hover:text-purple-300 font-semibold"
-                        onClick={() => setIsLogin(!isLogin)}
-                    >
-                        {isLogin ? "Don't have an account? Sign Up" : 'Already have an account? Login'}
-                    </button>
-                </div>
+        <div className="bg-slate-800 p-8 rounded-xl shadow-lg w-full max-w-md relative">
+            {onClose && <button onClick={onClose} className="absolute top-2 right-2 text-slate-400 hover:text-white p-2"><X size={20} /></button>}
+            <h2 className="text-2xl font-bold mb-4 text-center">{isLogin ? 'Login' : 'Sign Up'}</h2>
+            {error && <div className="text-red-400 mb-4 text-center text-sm p-3 bg-red-500/10 rounded-md">{error}</div>}
+            <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+                <input
+                    type="email"
+                    value={email}
+                    onChange={e => setEmail(e.target.value)}
+                    placeholder="Email"
+                    className="bg-slate-900/80 border border-slate-700 rounded-lg px-4 py-3 text-white placeholder-slate-500 focus:ring-2 focus:ring-purple-500/50 focus:outline-none transition-all"
+                    required
+                />
+                <input
+                    type="password"
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    placeholder="Password (min. 6 characters)"
+                    className="bg-slate-900/80 border border-slate-700 rounded-lg px-4 py-3 text-white placeholder-slate-500 focus:ring-2 focus:ring-purple-500/50 focus:outline-none transition-all"
+                    required
+                />
+                <button
+                    type="submit"
+                    disabled={loading}
+                    className="bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:scale-105 disabled:opacity-50 transition-all"
+                >
+                    {loading ? (isLogin ? 'Logging in...' : 'Signing up...') : (isLogin ? 'Login' : 'Sign Up')}
+                </button>
+            </form>
+            <div className="text-center mt-4">
+                <button
+                    className="text-purple-400 hover:text-purple-300 font-semibold text-sm"
+                    onClick={() => setIsLogin(!isLogin)}
+                >
+                    {isLogin ? "Don't have an account? Sign Up" : 'Already have an account? Login'}
+                </button>
             </div>
         </div>
     );
 };
 
-// --- GeneratorTool ---
-const GeneratorTool = ({ user, db, userData, isSubscribed, navigate, guestGenerations, setGuestGenerations, showLoginModal, setShowLoginModal, remainingGenerations, auth }) => {
+const GeneratorTool = ({ auth, user, db, userData, navigate, guestGenerations, setGuestGenerations, setShowLoginModal }) => {
     // --- STATE & CONSTANTS ---
     const [product, setProduct] = useState('');
     const [ideaType, setIdeaType] = useState('Hooks');
@@ -516,21 +403,25 @@ const GeneratorTool = ({ user, db, userData, isSubscribed, navigate, guestGenera
     const [showFavorites, setShowFavorites] = useState(false);
     const [isManagingSub, setIsManagingSub] = useState(false);
     const [logoutLoading, setLogoutLoading] = useState(false);
+    
+    const isSubscribed = userData?.subscription?.status === 'active';
+    
+    let remainingGenerations;
+    if (user) {
+        remainingGenerations = isSubscribed ? "Unlimited" : DAILY_FREE_LIMIT - (userData?.generations?.count || 0);
+    } else {
+        remainingGenerations = DAILY_FREE_LIMIT - (guestGenerations.count || 0);
+    }
+
 
     const ideaTypes = [
         { name: 'Hooks', icon: <Sparkles />, prompt: "short, scroll-stopping hooks (3-7 seconds long)", premium: false },
         { name: 'Video Ideas', icon: <Film />, prompt: "creative video concepts (problem/solution, unboxing)", premium: false },
         { name: 'Tips & Tricks', icon: <Lightbulb />, prompt: "monetization tips and tricks for affiliates", premium: false },
         { name: 'Viral Scripts', icon: <FileText />, prompt: "a 3-part viral video script template with placeholders", premium: true },
-        {
-            name: 'Trending Audio',
-            icon: <Music />,
-            prompt: `3 trending TikTok audios that are available in the TikTok Commercial Music Library (CML) and can be used for TikTok Shop/affiliate videos. For each, provide:\n- Song title\n- Artist\n- A short reason why it fits this product\n- (If possible) a TikTok link or identifier.\nOnly suggest audios that are marked as 'Commercially Licensed' and available for TikTok Shop videos. Do NOT suggest mainstream or non-commercially licensed music.`,
-            premium: true
-        },
+        { name: 'Trending Audio', icon: <Music />, prompt: "3 trending TikTok audios that are available in the TikTok Commercial Music Library (CML) and can be used for TikTok Shop/affiliate videos. For each, provide:\n- Song title\n- Artist\n- A short reason why it fits this product.\nOnly suggest audios that are marked as 'Commercially Licensed' and available for TikTok Shop videos. Do NOT suggest mainstream or non-commercially licensed music.", premium: true },
     ];
-    
-    // --- MODIFIED GENERATION LOGIC FOR GUESTS ---
+
     const handleGenerateIdeas = async () => {
         if (!VITE_GEMINI_API_KEY) {
             setError("AI service is not configured. Please contact support.");
@@ -538,7 +429,7 @@ const GeneratorTool = ({ user, db, userData, isSubscribed, navigate, guestGenera
         }
         if (!isSubscribed && remainingGenerations <= 0) {
             if (!user) {
-                setShowLoginModal(true); // Show login/signup modal for guests
+                setShowLoginModal(true);
             } else {
                 setError("You've reached your daily free limit. Upgrade to Genius for unlimited generations.");
             }
@@ -548,11 +439,15 @@ const GeneratorTool = ({ user, db, userData, isSubscribed, navigate, guestGenera
             setError('Please enter a product or niche first.');
             return;
         }
+
         setIsLoading(true);
         setError(null);
         setGeneratedIdeas([]);
+
         const selectedIdea = ideaTypes.find(it => it.name === ideaType);
+        
         const prompt = `You are an expert TikTok marketing strategist specializing in creating viral content for TikTok Shop affiliates. Generate 6 unique and engaging ${selectedIdea.prompt} for a TikTok video promoting a "${product}".`;
+
         const payload = {
             contents: [{ role: "user", parts: [{ text: prompt }] }],
             generationConfig: {
@@ -563,33 +458,42 @@ const GeneratorTool = ({ user, db, userData, isSubscribed, navigate, guestGenera
                 }
             }
         };
+
         const apiKey = VITE_GEMINI_API_KEY;
         const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+
         try {
             const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
             if (!response.ok) {
                 const errorData = await response.json();
                 throw new Error(errorData?.error?.message || `API error: ${response.status}`);
             }
+            
             const responseData = await response.json();
+            
             if (responseData.candidates?.[0]?.content?.parts?.[0]) {
                 const jsonText = responseData.candidates[0].content.parts[0].text;
                 const parsedJson = JSON.parse(jsonText);
                 setGeneratedIdeas(parsedJson.ideas || []);
                 if (!parsedJson.ideas || parsedJson.ideas.length === 0) setError("The AI couldn't generate ideas for this topic.");
-                if (!isSubscribed && user && db) {
-                    const appId = VITE_APP_ID || 'default-app-id';
-                    const userDocRef = doc(db, `artifacts/${appId}/users/${user.uid}`);
-                    const newCount = (userData?.generations?.lastReset === today) ? (userData.generations.count || 0) + 1 : 1;
-                    await updateDoc(userDocRef, { generations: { count: newCount, lastReset: today } });
-                } else if (!isSubscribed && !user) {
-                    // Guest: update localStorage
-                    const today = new Date().toISOString().split('T')[0];
-                    let newCount = guestGenerations.lastReset === today ? (guestGenerations.count || 0) + 1 : 1;
-                    const updated = { count: newCount, lastReset: today };
-                    setGuestGenerations(updated);
-                    localStorage.setItem('guestGenerations', JSON.stringify(updated));
+
+                // Decrement count for logged-in free user OR guest
+                if (!isSubscribed) {
+                    if(user && db) {
+                        const appId = VITE_APP_ID || 'default-app-id';
+                        const userDocRef = doc(db, `artifacts/${appId}/users/${user.uid}`);
+                        const today = new Date().toISOString().split('T')[0];
+                        const newCount = (userData.generations.lastReset === today) ? (userData.generations.count || 0) + 1 : 1;
+                        await updateDoc(userDocRef, { 'generations.count': newCount, 'generations.lastReset': today });
+                    } else if (!user) { // Guest user
+                        const today = new Date().toISOString().split('T')[0];
+                        const newCount = (guestGenerations.lastReset === today) ? (guestGenerations.count || 0) + 1 : 1;
+                        const updatedGuestData = { count: newCount, lastReset: today };
+                        setGuestGenerations(updatedGuestData);
+                        localStorage.setItem('guestGenerations', JSON.stringify(updatedGuestData));
+                    }
                 }
+
             } else {
                 if (responseData.candidates?.[0]?.finishReason === 'SAFETY') setError('Request blocked for safety reasons. Please try a different product.');
                 else setError('Failed to generate ideas. The response was empty.');
@@ -601,8 +505,33 @@ const GeneratorTool = ({ user, db, userData, isSubscribed, navigate, guestGenera
             setIsLoading(false);
         }
     };
+    
+    const handleManageSubscription = async () => {
+        setIsManagingSub(true);
+        setError(null);
+        try {
+            const response = await fetch('/api/create-portal-session', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId: user.uid }),
+            });
+            const data = await response.json();
+            if (data.error) {
+                throw new Error(data.error);
+            }
+            window.location.href = data.url;
+        } catch (err) {
+            setError(`Could not manage subscription: ${err.message}`);
+        } finally {
+            setIsManagingSub(false);
+        }
+    };
 
     const handleSelectIdeaType = (type) => {
+        if (type.premium && !user) {
+            setShowLoginModal(true);
+            return;
+        }
         if (type.premium && !isSubscribed) {
             setError('This is a Genius feature. Upgrade to unlock.');
             return;
@@ -614,6 +543,10 @@ const GeneratorTool = ({ user, db, userData, isSubscribed, navigate, guestGenera
     const isFavorite = (ideaText) => userData?.favorites?.some(fav => fav.idea === ideaText);
 
     const handleToggleFavorite = async (idea) => {
+        if (!user) {
+            setShowLoginModal(true);
+            return;
+        }
         if (!isSubscribed) {
             setError("Upgrade to Genius to save your favorite ideas.");
             return;
@@ -650,88 +583,55 @@ const GeneratorTool = ({ user, db, userData, isSubscribed, navigate, guestGenera
         }
         document.body.removeChild(textArea);
     }
-
-    // --- Format Trending Audio Results ---
-    const renderIdea = (item, index) => {
-        if (ideaType === 'Trending Audio') {
-            // Try to parse as JSON object with fields
-            try {
-                const parsed = JSON.parse(item.idea);
-                return (
-                    <div className="bg-slate-800/60 border border-purple-700 p-4 rounded-xl flex flex-col gap-1">
-                        <div className="font-bold text-lg text-purple-300">{parsed.title || parsed.song || 'Audio'}</div>
-                        <div className="text-slate-400 text-sm">{parsed.artist && <>by {parsed.artist}</>}</div>
-                        {parsed.reason && <div className="italic text-slate-400 text-xs">{parsed.reason}</div>}
-                        {parsed.link && <a href={parsed.link} target="_blank" rel="noopener noreferrer" className="text-purple-400 underline text-xs mt-1">Listen on TikTok</a>}
-                    </div>
-                );
-            } catch {
-                // fallback to plain text
-                return <p className="text-slate-300">{item.idea}</p>;
-            }
+    
+    const handleLogout = async () => {
+        setLogoutLoading(true);
+        try {
+            await signOut(auth);
+        } catch (error) {
+            console.error("Logout failed:", error);
+        } finally {
+            setLogoutLoading(false);
         }
-        return <p className="text-slate-300 mb-4 flex-grow">{item.idea}</p>;
-    };
+    }
 
     return (
         <div className="animate-fade-in">
-            {/* Guest-to-user upgrade modal when out of free generations, only if login modal is not open */}
-            {!user && !showLoginModal && guestGenerations.lastResetTimestamp === new Date().toISOString().split('T')[0] && guestGenerations.count >= DAILY_FREE_LIMIT && (
-                <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center" onClick={() => setShowLoginModal(true)}>
-                    <div className="bg-slate-800/90 p-8 rounded-2xl shadow-2xl w-full max-w-md relative text-center" onClick={e => e.stopPropagation()}>
-                        <button className="absolute top-2 right-2 text-slate-400 hover:text-white" onClick={() => setShowLoginModal(false)}><X /></button>
-                        <h2 className="text-2xl font-bold mb-2">Unlock More Ideas!</h2>
-                        <p className="mb-4 text-slate-300">Sign up for a free account to get more daily ideas, save your favorites, and access premium features.</p>
-                        <button className="bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold py-2 px-6 rounded-lg shadow-lg hover:scale-105 transition-all" onClick={() => setShowLoginModal(true)}>Sign Up / Login</button>
-                    </div>
-                </div>
-            )}
             <header className="text-center mb-10 flex flex-col sm:flex-row justify-between items-center gap-4">
                 <div>
                     <h1 className="text-3xl sm:text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-purple-400 via-pink-500 to-red-500">Shop Trend Genius</h1>
                     <p className="text-slate-400 text-lg">
-                        {isSubscribed ? "Welcome, Genius Member!" : "Welcome! Let's create something viral."}
+                        {user ? (isSubscribed ? `Welcome back, Genius!` : `Welcome, ${userData?.email || 'Creator'}!`) : "Welcome! Let's create something viral."}
                     </p>
                 </div>
                 <div className="mt-4 sm:mt-0 flex items-center gap-4">
-                    {!user ? (
-                        <div className="text-right">
+                    { !user ? (
+                         <div className="text-right">
                             <p className="font-bold text-slate-300">Daily Generations Left: {remainingGenerations > 0 ? remainingGenerations : 0}</p>
                             <button onClick={() => setShowLoginModal(true)} className="text-purple-400 hover:text-purple-300 font-semibold">Login / Sign Up</button>
-                        </div>
+                         </div>
                     ) : !isSubscribed ? (
-                        <div className="text-right">
-                            <p className="font-bold text-slate-300">Daily Generations Left: {remainingGenerations > 0 ? remainingGenerations : 0}</p>
-                            <button onClick={() => navigate('pricing')} className="text-purple-400 hover:text-purple-300 font-semibold">Upgrade to Genius ✨</button>
-                        </div>
+                         <div className="text-right">
+                             <p className="font-bold text-slate-300">Daily Generations Left: {remainingGenerations > 0 ? remainingGenerations : 0}</p>
+                             <button onClick={() => navigate('pricing')} className="text-purple-400 hover:text-purple-300 font-semibold">Upgrade to Genius ✨</button>
+                         </div>
                     ) : (
                         <>
                             <button onClick={handleManageSubscription} disabled={isManagingSub} className="flex items-center gap-2 bg-slate-800/50 border border-slate-700 px-4 py-2 rounded-lg hover:bg-slate-700 transition-colors disabled:opacity-50">
-                                <Settings className="w-5 h-5 text-slate-400"/> {isManagingSub ? 'Loading...' : 'Manage Subscription'}
+                                <Settings className="w-5 h-5 text-slate-400"/> {isManagingSub ? 'Loading...' : 'Manage'}
                             </button>
                             <button onClick={() => setShowFavorites(!showFavorites)} className="flex items-center gap-2 bg-slate-800/50 border border-slate-700 px-4 py-2 rounded-lg hover:bg-slate-700 transition-colors">
-                                <Star className="w-5 h-5 text-yellow-400"/> My Favorites ({userData?.favorites?.length || 0})
+                                <Star className="w-5 h-5 text-yellow-400"/> Favorites ({userData?.favorites?.length || 0})
                             </button>
                         </>
                     )}
-                    {/* Logout button for all logged-in users */}
                     {user && (
                         <button
-                            onClick={async () => {
-                                setLogoutLoading(true);
-                                try {
-                                    await signOut(auth);
-                                    setLogoutLoading(false);
-                                    window.location.reload(); // Force reload to clear state and re-init auth
-                                } catch (e) {
-                                    setLogoutLoading(false);
-                                    alert('Logout failed. Please try again.');
-                                }
-                            }}
+                            onClick={handleLogout}
                             disabled={logoutLoading}
                             className="ml-4 text-slate-400 hover:text-white border border-slate-700 px-3 py-2 rounded-lg disabled:opacity-50"
                         >
-                            {logoutLoading ? 'Logging out...' : 'Logout'}
+                            {logoutLoading ? '...' : 'Logout'}
                         </button>
                     )}
                 </div>
@@ -785,21 +685,22 @@ const GeneratorTool = ({ user, db, userData, isSubscribed, navigate, guestGenera
                             className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold transition-all duration-300 border ${ ideaType === type.name ? 'bg-white/10 border-slate-600 text-white' : 'bg-transparent border-slate-700 text-slate-400 hover:bg-slate-700/50 hover:text-white'}`}
                         >
                             {type.icon} {type.name}
-                            {type.premium && !isSubscribed && <Lock className="w-3 h-3 text-yellow-400 ml-1"/>}
+                            {type.premium && !user ? <Lock className="w-3 h-3 text-yellow-400 ml-1"/> : type.premium && !isSubscribed && <Lock className="w-3 h-3 text-yellow-400 ml-1"/>}
                         </button>
                     ))}
                 </div>
             </main>
+
             <div className="mt-10 min-h-[300px]">
                 {error && (<div className="text-center bg-red-500/10 border border-red-500/30 text-red-300 p-4 rounded-lg"><p>{error}</p></div>)}
                 {generatedIdeas.length > 0 && (
                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-fade-in">
                          {generatedIdeas.map((item, index) => (
                              <div key={index} className="group bg-slate-800/50 border border-slate-700 p-5 rounded-xl shadow-lg flex flex-col justify-between transform hover:-translate-y-1 transition-all duration-300 hover:border-purple-500/50">
-                                 {renderIdea(item, index)}
-                                 <div className="flex justify-end items-center gap-2 mt-2">
+                                 <p className="text-slate-300 mb-4 flex-grow">{item.idea}</p>
+                                 <div className="flex justify-end items-center gap-2">
                                      <button onClick={() => handleToggleFavorite(item)} className={`transition-colors ${isSubscribed ? 'text-slate-500 hover:text-yellow-400' : 'text-slate-600 cursor-help'}`} title={isSubscribed ? 'Save to Favorites' : 'Upgrade to save ideas'}>
-                                         <Star className={`w-5 h-5 ${isFavorite(item.idea) ? 'fill-current text-yellow-400' : ''}`} />
+                                         <Star className={`w-5 h-5 ${user && isFavorite(item.idea) ? 'fill-current text-yellow-400' : ''}`} />
                                      </button>
                                      <button onClick={() => handleCopy(item.idea, index)} className="self-end flex items-center bg-slate-700/50 text-slate-400 group-hover:bg-purple-500/20 group-hover:text-white px-3 py-1.5 rounded-md text-xs font-semibold transition-colors duration-200">
                                          <Copy className="w-3.5 h-3.5 mr-2" />
@@ -809,10 +710,6 @@ const GeneratorTool = ({ user, db, userData, isSubscribed, navigate, guestGenera
                              </div>
                          ))}
                      </div>
-                )}
-                {/* Guest favorites prompt */}
-                {!user && generatedIdeas.length > 0 && (
-                    <div className="text-center text-xs text-slate-400 mt-4">Sign up to save your favorite ideas!</div>
                 )}
             </div>
         </div>
