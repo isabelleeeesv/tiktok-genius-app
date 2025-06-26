@@ -178,8 +178,10 @@ const App = () => {
                     return <GeneratorTool auth={auth} user={user} db={db} userData={userData} navigate={setCurrentPage} guestGenerations={guestGenerations} setGuestGenerations={setGuestGenerations} setShowLoginModal={setShowLoginModal} />;
                 }
                 return <PricingPage user={user} navigate={setCurrentPage} />;
+            case 'manage-subscription':
+                return <ManageSubscriptionPage user={user} navigate={setCurrentPage} />;
             default:
-                return <GeneratorTool auth={auth} user={user} db={db} userData={userData} navigate={setCurrentPage} guestGenerations={guestGenerations} setGuestGenerations={setGuestGenerations} setShowLoginModal={setShowLoginModal} />;
+                return <GeneratorTool auth={auth} user={user} db={db} userData={userData} navigate={setCurrentPage} guestGenerations={guestGenerations} setGuestGenerations={setSetGuestGenerations} setShowLoginModal={setShowLoginModal} />;
         }
     }
 
@@ -617,7 +619,7 @@ const GeneratorTool = ({ auth, user, db, userData, navigate, guestGenerations, s
                          </div>
                     ) : (
                         <>
-                            <button onClick={handleManageSubscription} disabled={isManagingSub} className="flex items-center gap-2 bg-slate-800/50 border border-slate-700 px-4 py-2 rounded-lg hover:bg-slate-700 transition-colors disabled:opacity-50">
+                            <button onClick={() => navigate('manage-subscription')} disabled={isManagingSub} className="flex items-center gap-2 bg-slate-800/50 border border-slate-700 px-4 py-2 rounded-lg hover:bg-slate-700 transition-colors disabled:opacity-50">
                                 <Settings className="w-5 h-5 text-slate-400"/> {isManagingSub ? 'Loading...' : 'Manage'}
                             </button>
                             <button onClick={() => setShowFavorites(!showFavorites)} className="flex items-center gap-2 bg-slate-800/50 border border-slate-700 px-4 py-2 rounded-lg hover:bg-slate-700 transition-colors">
@@ -712,6 +714,41 @@ const GeneratorTool = ({ auth, user, db, userData, navigate, guestGenerations, s
                      </div>
                 )}
             </div>
+        </div>
+    );
+};
+
+const ManageSubscriptionPage = ({ user, navigate }) => {
+    const [error, setError] = useState(null);
+    useEffect(() => {
+        const goToPortal = async () => {
+            try {
+                const response = await fetch('/api/create-portal-session', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ userId: user.uid }),
+                });
+                const data = await response.json();
+                if (data.error) throw new Error(data.error);
+                window.location.href = data.url;
+            } catch (err) {
+                setError(err.message || 'Could not open subscription portal.');
+            }
+        };
+        goToPortal();
+    }, [user]);
+    return (
+        <div className="flex flex-col items-center justify-center min-h-[60vh]">
+            <h2 className="text-2xl font-bold mb-4">Manage Subscription</h2>
+            {error ? (
+                <div className="text-red-400 bg-red-500/10 border border-red-500/30 p-4 rounded-lg">{error}</div>
+            ) : (
+                <>
+                    <svg className="animate-spin h-8 w-8 text-purple-400 mb-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                    <p className="text-slate-400">Redirecting to subscription management...</p>
+                </>
+            )}
+            <button onClick={() => navigate('generator')} className="mt-6 text-purple-400 hover:text-white">Back to Generator</button>
         </div>
     );
 };
