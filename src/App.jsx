@@ -187,6 +187,18 @@ const App = () => {
 
     return (
         <div className="min-h-screen bg-slate-900 text-white font-sans relative overflow-x-hidden">
+            {/* Top-right Manage Subscription button for logged-in users */}
+            {user && userData?.subscription?.status === 'active' && (
+                <div className="absolute top-4 right-6 z-50">
+                    <button
+                        onClick={() => setCurrentPage('manage-subscription')}
+                        className="flex items-center gap-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold py-2 px-5 rounded-lg shadow-lg hover:scale-105 transition-all"
+                    >
+                        <Settings className="w-5 h-5 text-white" /> Manage Subscription
+                    </button>
+                </div>
+            )}
+
             {showOnboarding && (
                 <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4" onClick={() => setShowOnboarding(false)}>
                     <div className="bg-slate-800/90 p-8 rounded-2xl shadow-2xl w-full max-w-lg relative text-center" onClick={e => e.stopPropagation()}>
