@@ -22,6 +22,7 @@ import {
 } from 'firebase/firestore';
 import { Sparkles, Copy, Lightbulb, TrendingUp, Film, CheckCircle, Star, Music, FileText, X, Lock, Settings } from 'lucide-react';
 import { loadStripe } from '@stripe/stripe-js';
+import { Analytics } from '@vercel/analytics/react';
 
 // --- CONSTANTS ---
 const VITE_FIREBASE_CONFIG = import.meta.env.VITE_FIREBASE_CONFIG;
@@ -289,6 +290,7 @@ const App = () => {
                     {user && <p className="mt-1 text-xs truncate">User ID: {user.uid}</p>}
                 </footer>
             </div>
+            <Analytics />
         </div>
     );
 };
@@ -371,6 +373,7 @@ const PricingPage = ({ user, navigate }) => {
                 setIsLoading(false);
             }
         } catch (err) {
+            console.error(err); // <-- Added for debugging Stripe integration errors
             setError("An unexpected error occurred. Please try again.");
             setIsLoading(false);
         }
