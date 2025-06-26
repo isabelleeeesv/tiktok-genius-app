@@ -162,6 +162,30 @@ const App = () => {
         }
     }, []);
     
+    // --- SCROLL LOCK FOR MODALS (MOBILE UX) ---
+    useEffect(() => {
+        const modalOpen = showOnboarding || showLoginModal;
+        if (modalOpen) {
+            document.body.style.overflow = 'hidden';
+        } else {
+            document.body.style.overflow = '';
+        }
+        // Clean up on unmount
+        return () => { document.body.style.overflow = ''; };
+    }, [showOnboarding, showLoginModal]);
+
+    // --- BODY SCROLL LOCK FOR MODALS (MOBILE-FRIENDLY) ---
+    useEffect(() => {
+        const modalOpen = showOnboarding || showLoginModal;
+        if (modalOpen) {
+            document.body.classList.add('modal-open');
+        } else {
+            document.body.classList.remove('modal-open');
+        }
+        // Clean up on unmount
+        return () => document.body.classList.remove('modal-open');
+    }, [showOnboarding, showLoginModal]);
+
     // --- RENDER LOGIC ---
     if (!isAuthReady) {
         return <LoadingScreen />;
@@ -457,6 +481,7 @@ const GeneratorTool = ({ auth, user, db, userData, navigate, guestGenerations, s
         { name: 'Tips & Tricks', icon: <Lightbulb />, prompt: "monetization tips and tricks for affiliates", premium: false },
         { name: 'Viral Scripts', icon: <FileText />, prompt: "a 3-part viral video script template with placeholders", premium: true },
         { name: 'Trending Audio', icon: <Music />, prompt: "3 trending TikTok audios that are available in the TikTok Commercial Music Library (CML) and can be used for TikTok Shop/affiliate videos. For each, provide:\n- Song title\n- Artist\n- A short reason why it fits this product.\nOnly suggest audios that are marked as 'Commercially Licensed' and available for TikTok Shop videos. Do NOT suggest mainstream or non-commercially licensed music.", premium: true },
+        { name: 'Timed Script', icon: <FileText />, prompt: "a full TikTok video script for a Shop/Affiliate product, broken down by suggested timestamps and scene descriptions. For each scene, provide: (1) Timestamp (e.g. 0:00-0:03), (2) Scene description, (3) Script/dialogue. Format as an array of scenes, each with these fields. Make it engaging and optimized for TikTok virality.", premium: true },
     ];
 
     const handleGenerateIdeas = async () => {
@@ -775,10 +800,10 @@ const ManageSubscriptionPage = ({ user, navigate }) => {
             {error ? (
                 <div className="text-red-400 bg-red-500/10 border border-red-500/30 p-4 rounded-lg">{error}</div>
             ) : (
-                <>
+                <div className="flex flex-col items-center">
                     <svg className="animate-spin h-8 w-8 text-purple-400 mb-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
                     <p className="text-slate-400">Redirecting to subscription management...</p>
-                </>
+                </div>
             )}
             <button onClick={() => navigate('generator')} className="mt-6 text-purple-400 hover:text-white">Back to Generator</button>
         </div>
