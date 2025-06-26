@@ -28,6 +28,8 @@ const VITE_APP_ID = import.meta.env.VITE_APP_ID;
 const VITE_GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
 const VITE_STRIPE_PUBLISHABLE_KEY = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY;
 const VITE_STRIPE_PRICE_ID = import.meta.env.VITE_STRIPE_PRICE_ID;
+const VITE_MAILERLITE_API_KEY = import.meta.env.VITE_MAILERLITE_API_KEY;
+const VITE_MAILERLITE_LIST_ID = import.meta.env.VITE_MAILERLITE_LIST_ID; // Set this in your .env
 const DAILY_FREE_LIMIT = 3;
 
 // --- MAIN APP COMPONENT ---
@@ -187,18 +189,6 @@ const App = () => {
 
     return (
         <div className="min-h-screen bg-slate-900 text-white font-sans relative overflow-x-hidden">
-            {/* Top-right Manage Subscription button for logged-in users */}
-            {user && userData?.subscription?.status === 'active' && (
-                <div className="absolute top-4 right-6 z-50">
-                    <button
-                        onClick={() => setCurrentPage('manage-subscription')}
-                        className="flex items-center gap-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold py-2 px-5 rounded-lg shadow-lg hover:scale-105 transition-all"
-                    >
-                        <Settings className="w-5 h-5 text-white" /> Manage Subscription
-                    </button>
-                </div>
-            )}
-
             {showOnboarding && (
                 <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4" onClick={() => setShowOnboarding(false)}>
                     <div className="bg-slate-800/90 p-8 rounded-2xl shadow-2xl w-full max-w-lg relative text-center" onClick={e => e.stopPropagation()}>
@@ -340,12 +330,39 @@ const PricingPage = ({ user, navigate }) => {
 };
 
 const LoginPage = ({ auth, navigate, onClose }) => {
+    // --- STATE ---
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState(null);
     const [isLogin, setIsLogin] = useState(true);
     const [loading, setLoading] = useState(false);
 
+    // --- MAILERLITE HELPER ---
+    async function subscribeToMailerLite(email) {
+        if (!VITE_MAILERLITE_API_KEY || !VITE_MAILERLITE_LIST_ID) return;
+        try {
+            const response = await fetch('https://connect.mailerlite.com/api/subscribers', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'Authorization': `Bearer ${VITE_MAILERLITE_API_KEY}`
+                },
+                body: JSON.stringify({
+                    email,
+                    groups: [VITE_MAILERLITE_LIST_ID]
+                })
+            });
+            if (!response.ok) {
+                const error = await response.json();
+                console.error('MailerLite error:', error);
+            }
+        } catch (err) {
+            console.error('MailerLite request failed:', err);
+        }
+    }
+
+    // --- FORM SUBMISSION ---
     const handleSubmit = async (e) => {
         e.preventDefault();
         setError(null);
@@ -355,6 +372,8 @@ const LoginPage = ({ auth, navigate, onClose }) => {
                 await signInWithEmailAndPassword(auth, email, password);
             } else {
                 await createUserWithEmailAndPassword(auth, email, password);
+                // Subscribe to MailerLite after successful signup
+                await subscribeToMailerLite(email);
             }
             if(onClose) onClose();
         } catch (err) {
@@ -418,7 +437,11 @@ const GeneratorTool = ({ auth, user, db, userData, navigate, guestGenerations, s
     const [isManagingSub, setIsManagingSub] = useState(false);
     const [logoutLoading, setLogoutLoading] = useState(false);
     
-    const isSubscribed = userData?.subscription?.status === 'active';
+    // --- OWNER OVERRIDE FOR SUBSCRIPTION ---
+    const isOwner = user?.email === "thinkpink999333@gmail.com";
+
+    // Use owner override for subscription
+    const isSubscribed = isOwner || userData?.subscription?.status === 'active';
     
     let remainingGenerations;
     if (user) {
@@ -631,9 +654,6 @@ const GeneratorTool = ({ auth, user, db, userData, navigate, guestGenerations, s
                          </div>
                     ) : (
                         <>
-                            <button onClick={() => navigate('manage-subscription')} disabled={isManagingSub} className="flex items-center gap-2 bg-slate-800/50 border border-slate-700 px-4 py-2 rounded-lg hover:bg-slate-700 transition-colors disabled:opacity-50">
-                                <Settings className="w-5 h-5 text-slate-400"/> {isManagingSub ? 'Loading...' : 'Manage'}
-                            </button>
                             <button onClick={() => setShowFavorites(!showFavorites)} className="flex items-center gap-2 bg-slate-800/50 border border-slate-700 px-4 py-2 rounded-lg hover:bg-slate-700 transition-colors">
                                 <Star className="w-5 h-5 text-yellow-400"/> Favorites ({userData?.favorites?.length || 0})
                             </button>
