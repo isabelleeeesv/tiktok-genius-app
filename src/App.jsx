@@ -480,7 +480,7 @@ const GeneratorTool = ({ auth, user, db, userData, navigate, guestGenerations, s
         { name: 'Video Ideas', icon: <Film />, prompt: "creative video concepts (problem/solution, unboxing)", premium: false },
         { name: 'Tips & Tricks', icon: <Lightbulb />, prompt: "monetization tips and tricks for affiliates", premium: false },
         { name: 'Viral Scripts', icon: <FileText />, prompt: "a 3-part viral video script template with placeholders", premium: true },
-        { name: 'Trending Audio', icon: <Music />, prompt: "3 trending TikTok audios that are available in the TikTok Commercial Music Library (CML) and can be used for TikTok Shop/affiliate videos. For each, provide:\n- Song title\n- Artist\n- A short reason why it fits this product.\nOnly suggest audios that are marked as 'Commercially Licensed' and available for TikTok Shop videos. Do NOT suggest mainstream or non-commercially licensed music.", premium: true },
+        { name: 'Trending Audio', icon: <Music />, prompt: "3 trending TikTok audios that are available in the TikTok Commercial Music Library (CML) and can be used for TikTok Shop/affiliate videos. For each, provide:\n- Song title\n- Artist\n- A short reason why it fits this product.\nOnly suggest audios that are marked as 'Commercially Licensed' and available for TikTok Shop videos. Do NOT suggest mainstream, big, or popular songs or artists (e.g. no Taylor Swift, Drake, Olivia Rodrigo, etc). Only suggest lesser-known, commercial-use audios. If unsure, say 'No suitable audio found.'", premium: true },
         { name: 'Timed Script', icon: <FileText />, prompt: "a full TikTok video script for a Shop/Affiliate product, broken down by suggested timestamps and scene descriptions. For each scene, provide: (1) Timestamp (e.g. 0:00-0:03), (2) Scene description, (3) Script/dialogue. Format as an array of scenes, each with these fields. Make it engaging and optimized for TikTok virality.", premium: true },
     ];
 
@@ -753,6 +753,7 @@ const GeneratorTool = ({ auth, user, db, userData, navigate, guestGenerations, s
             <div className="mt-10 min-h-[300px]">
                 {error && (<div className="text-center bg-red-500/10 border border-red-500/30 text-red-300 p-4 rounded-lg"><p>{error}</p></div>)}
                 {generatedIdeas.length > 0 && (
+                     <>
                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-fade-in">
                          {generatedIdeas.map((item, index) => (
                              <div key={index} className="group bg-slate-800/50 border border-slate-700 p-5 rounded-xl shadow-lg flex flex-col justify-between transform hover:-translate-y-1 transition-all duration-300 hover:border-purple-500/50">
@@ -769,6 +770,11 @@ const GeneratorTool = ({ auth, user, db, userData, navigate, guestGenerations, s
                              </div>
                          ))}
                      </div>
+                     {/* Disclaimer for generated ideas */}
+                     <div className="text-xs text-slate-400 mt-4 text-center">
+                        <span>Disclaimer: These AI-generated ideas are for inspiration only and are not guaranteed to be 100% accurate or suitable for your specific needs.</span>
+                     </div>
+                     </>
                 )}
             </div>
         </div>
