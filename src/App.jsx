@@ -480,8 +480,9 @@ const GeneratorTool = ({ auth, user, db, userData, navigate, guestGenerations, s
         { name: 'Video Ideas', icon: <Film />, prompt: "creative video concepts (problem/solution, unboxing)", premium: false },
         { name: 'Tips & Tricks', icon: <Lightbulb />, prompt: "monetization tips and tricks for affiliates", premium: false },
         { name: 'Viral Scripts', icon: <FileText />, prompt: "a 3-part viral video script template with placeholders", premium: true },
-        { name: 'Trending Audio', icon: <Music />, prompt: `3 instrumental TikTok audios (no vocals, only instrumentals or beats) that are available in the TikTok Commercial Music Library (CML) and can be used for TikTok Shop/affiliate videos. For each, provide:\n- Song title\n- Artist\n- A short reason why it fits this product.\nOnly suggest instrumentals, beats, or background music that are marked as 'Commercially Licensed' and available for TikTok Shop videos. Do NOT suggest mainstream, big, or popular songs or artists (e.g. no Taylor Swift, Drake, Olivia Rodrigo, etc). Only suggest lesser-known, commercial-use instrumentals.\nIMPORTANT: Double check that the instrumental actually exists and is a real match. If you are not 100% sure the audio exists in the TikTok Commercial Music Library, reply 'No suitable audio found.'`, premium: true },
+        { name: 'TikTok Shop Hashtag Pack', icon: <TrendingUp />, prompt: `a pack of 15-20 high-performing, relevant hashtags for a TikTok Shop post about the following product. The hashtags should be a mix of trending, niche, and general TikTok Shop/affiliate tags. Only include the hashtags (no explanations), separated by spaces, and do NOT include the # symbol in the output (the user will copy and paste them).`, premium: true },
         { name: 'Timed Script', icon: <FileText />, prompt: "a full TikTok video script for a Shop/Affiliate product, broken down by suggested timestamps and scene descriptions. For each scene, provide: (1) Timestamp (e.g. 0:00-0:03), (2) Scene description, (3) Script/dialogue. Format as an array of scenes, each with these fields. Make it engaging and optimized for TikTok virality.", premium: true },
+        { name: 'B-roll Prompts', icon: <Film />, prompt: "a list of 6 creative B-roll shot ideas for a TikTok video about the following product. Each B-roll prompt should be visually descriptive, relevant to the product, and help make the video more engaging. Format as a simple list of B-roll shot descriptions.", premium: true },
     ];
 
     const handleGenerateIdeas = async () => {
@@ -634,6 +635,11 @@ const GeneratorTool = ({ auth, user, db, userData, navigate, guestGenerations, s
     const handleCopy = (text, index) => {
         const textArea = document.createElement('textarea');
         textArea.value = text;
+    };
+    
+    const handleCopy = (text, index) => {
+        const textArea = document.createElement('textarea');
+        textArea.value = text;
         document.body.appendChild(textArea);
         textArea.select();
         try {
@@ -697,11 +703,6 @@ const GeneratorTool = ({ auth, user, db, userData, navigate, guestGenerations, s
             </header>
 
             {isSubscribed && showFavorites && 
-                 <div className="fixed inset-0 bg-black/60 z-40" onClick={() => setShowFavorites(false)}>
-                     <div className="absolute top-0 right-0 h-full w-full max-w-md bg-slate-900 shadow-2xl p-6 flex flex-col animate-slide-in-right" onClick={e => e.stopPropagation()}>
-                         <div className="flex justify-between items-center mb-4">
-                             <h2 className="text-2xl font-bold">My Favorites</h2>
-                             <button onClick={() => setShowFavorites(false)} className="text-slate-400 hover:text-white"><X/></button>
                          </div>
                          <div className="overflow-y-auto flex-grow pr-2">
                             {userData?.favorites?.length > 0 ? [...userData.favorites].reverse().map((fav, index) => (
