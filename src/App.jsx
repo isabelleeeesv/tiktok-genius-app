@@ -635,11 +635,6 @@ const GeneratorTool = ({ auth, user, db, userData, navigate, guestGenerations, s
     const handleCopy = (text, index) => {
         const textArea = document.createElement('textarea');
         textArea.value = text;
-    };
-    
-    const handleCopy = (text, index) => {
-        const textArea = document.createElement('textarea');
-        textArea.value = text;
         document.body.appendChild(textArea);
         textArea.select();
         try {
@@ -702,22 +697,27 @@ const GeneratorTool = ({ auth, user, db, userData, navigate, guestGenerations, s
                 </div>
             </header>
 
-            {isSubscribed && showFavorites && 
-                         </div>
-                         <div className="overflow-y-auto flex-grow pr-2">
+            {isSubscribed && showFavorites && (
+                <div className="fixed inset-0 bg-black/60 z-40 flex items-center justify-center p-4" onClick={() => setShowFavorites(false)}>
+                    <div className="bg-slate-800/90 rounded-xl shadow-2xl w-full max-w-md max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+                        <div className="flex items-center justify-between p-4 border-b border-slate-700">
+                            <h3 className="text-lg font-bold text-white">Your Favorites</h3>
+                            <button onClick={() => setShowFavorites(false)} className="text-slate-400 hover:text-white"><X /></button>
+                        </div>
+                        <div className="overflow-y-auto flex-grow pr-2 p-4">
                             {userData?.favorites?.length > 0 ? [...userData.favorites].reverse().map((fav, index) => (
-                                 <div key={index} className="bg-slate-800 p-4 rounded-lg mb-3">
-                                     <p className="text-slate-300">{fav.idea}</p>
-                                     <div className="flex justify-end gap-2 mt-2">
-                                          <button onClick={() => handleToggleFavorite(fav)} className="text-slate-500 hover:text-red-500"><X className="w-4 h-4"/></button>
-                                          <button onClick={() => handleCopy(fav.idea, `fav-${index}`)} className="text-slate-500 hover:text-white"><Copy className="w-4 h-4"/></button>
-                                     </div>
-                                 </div>
+                                <div key={index} className="bg-slate-800 p-4 rounded-lg mb-3">
+                                    <p className="text-slate-300">{fav.idea}</p>
+                                    <div className="flex justify-end gap-2 mt-2">
+                                        <button onClick={() => handleToggleFavorite(fav)} className="text-slate-500 hover:text-red-500"><X className="w-4 h-4"/></button>
+                                        <button onClick={() => handleCopy(fav.idea, `fav-${index}`)} className="text-slate-500 hover:text-white"><Copy className="w-4 h-4"/></button>
+                                    </div>
+                                </div>
                             )) : <p className="text-slate-500 text-center mt-8">You haven't saved any ideas yet.</p>}
-                         </div>
-                     </div>
-                 </div>
-            }
+                        </div>
+                    </div>
+                </div>
+            )}
 
             <main className="bg-slate-800/50 p-6 rounded-2xl shadow-2xl border border-slate-700 backdrop-blur-lg">
                 <div className="flex flex-col sm:flex-row gap-4 mb-5">
