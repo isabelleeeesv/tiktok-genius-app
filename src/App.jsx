@@ -829,33 +829,36 @@ const GeneratorTool = ({ auth, user, db, userData, navigate, guestGenerations, s
                              }
                              // --- SPECIAL RENDERING FOR VIRAL SCRIPTS ---
                              if (ideaType === 'Viral Scripts') {
-                                 // Split into sections by headers (e.g., Hook, Body, Call to Action)
-                                 const sectionRegex = /\n(?=[A-Z][A-Za-z ]+:)/g;
-                                 const sections = item.idea.split(sectionRegex).map(s => s.trim()).filter(Boolean);
+                                 // Split by 'Part' or similar markers, fallback to newlines if not found
+                                 const partRegex = /(Part \d+[:.-]?)/gi;
+                                 let parts = [];
+                                 if (item.idea.match(partRegex)) {
+                                     // Split and keep the part label
+                                     const rawParts = item.idea.split(partRegex).map(s => s.trim()).filter(Boolean);
+                                     for (let i = 0; i < rawParts.length; i++) {
+                                         if (/^Part \d+[:.-]?$/i.test(rawParts[i])) {
+                                             parts.push({ label: rawParts[i], content: rawParts[i + 1] || '' });
+                                             i++;
+                                         } else if (i === 0 && rawParts.length > 1) {
+                                             // If the script starts with a title or intro
+                                             parts.push({ label: 'Intro', content: rawParts[i] });
+                                         }
+                                     }
+                                 } else {
+                                     // Fallback: split by newlines for each logical block
+                                     parts = item.idea.split(/\n+/).map((block, idx) => ({ label: `Part ${idx + 1}`, content: block.trim() })).filter(p => p.content);
+                                 }
                                  return (
                                      <div key={index} className="group bg-slate-800/50 border border-slate-700 p-5 rounded-xl shadow-lg flex flex-col justify-between transform hover:-translate-y-1 transition-all duration-300 hover:border-pink-500/50">
                                          <div className="text-slate-300 mb-4 flex-grow space-y-2">
-                                             {sections.map((section, idx) => {
-                                                 // Extract header and body
-                                                 const headerMatch = section.match(/^([A-Z][A-Za-z ]+):/);
-                                                 let header = headerMatch ? headerMatch[1] : null;
-                                                 let body = headerMatch ? section.replace(/^([A-Z][A-Za-z ]+):/, '').trim() : section.trim();
-                                                 // Add emoji to headers for a touch of style
-                                                 let emoji = '';
-                                                 if (header) {
-                                                     if (header.toLowerCase().includes('hook')) emoji = '🎣';
-                                                     else if (header.toLowerCase().includes('body')) emoji = '💡';
-                                                     else if (header.toLowerCase().includes('call')) emoji = '📢';
-                                                     else if (header.toLowerCase().includes('twist')) emoji = '🔥';
-                                                     else emoji = '✨';
-                                                 }
-                                                 return (
-                                                     <div key={idx} className="bg-slate-900/70 border border-slate-700 rounded-lg p-3 mb-2">
-                                                         {header && <div className="font-bold text-pink-400 flex items-center gap-2 text-base mb-1">{emoji} {header}</div>}
-                                                         <div className="whitespace-pre-line text-slate-100">{body}</div>
+                                             {parts.map((part, idx) => (
+                                                 <div key={idx} className="bg-slate-900/70 border border-slate-700 rounded-lg p-3 mb-2">
+                                                     <div className="font-bold text-pink-400 flex items-center gap-2 text-base mb-1">
+                                                         {`📖 ${part.label}`}
                                                      </div>
-                                                 );
-                                             })}
+                                                     <div className="whitespace-pre-line text-slate-100">{part.content}</div>
+                                                 </div>
+                                             ))}
                                          </div>
                                          <div className="flex justify-end items-center gap-2 mt-2">
                                              <button onClick={() => handleToggleFavorite(item)} className={`transition-colors ${isSubscribed ? 'text-slate-500 hover:text-yellow-400' : 'text-slate-600 cursor-help'}`} title={isSubscribed ? 'Save to Favorites' : 'Upgrade to save ideas'}>
