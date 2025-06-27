@@ -465,6 +465,11 @@ const GeneratorTool = ({ auth, user, db, userData, navigate, guestGenerations, s
     const [isManagingSub, setIsManagingSub] = useState(false);
     const [logoutLoading, setLogoutLoading] = useState(false);
     
+    // Debug: log generatedIdeas state before render
+    useEffect(() => {
+        console.log('generatedIdeas state:', generatedIdeas);
+    }, [generatedIdeas]);
+
     // --- OWNER OVERRIDE FOR SUBSCRIPTION ---
     const isOwner = user?.email === "thinkpink999333@gmail.com";
 
@@ -545,8 +550,18 @@ const GeneratorTool = ({ auth, user, db, userData, navigate, guestGenerations, s
                     setGeneratedIdeas(parsedJson.ideas || []);
                     if (!parsedJson.ideas || parsedJson.ideas.length === 0) setError("The AI couldn't generate ideas for this topic.");
                 } catch (parseErr) {
-                    console.error('Failed to parse Gemini JSON text:', parseErr, jsonText);
-                    setError('Failed to parse AI response. Please try again or contact support.');
+                    // Fallback: treat as plain text and split into ideas
+                    console.warn('Falling back to plain text parsing for Gemini response.');
+                    let ideas = [];
+                    // Try to split by numbered list (e.g., 1. ... 2. ...)
+                    if (/\d+\./.test(jsonText)) {
+                        ideas = jsonText.split(/\n?\d+\.\s?/).filter(Boolean).map(idea => ({ idea: idea.trim() })).filter(i => i.idea);
+                    } else {
+                        // Otherwise, split by newlines
+                        ideas = jsonText.split(/\n|\r/).map(idea => ({ idea: idea.trim() })).filter(i => i.idea);
+                    }
+                    setGeneratedIdeas(ideas);
+                    if (ideas.length === 0) setError('Failed to parse AI response. Please try again or contact support.');
                 }
             } else {
                 if (responseData.candidates?.[0]?.finishReason === 'SAFETY') setError('Request blocked for safety reasons. Please try a different product.');
@@ -754,8 +769,9 @@ const GeneratorTool = ({ auth, user, db, userData, navigate, guestGenerations, s
                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-fade-in">
                          {generatedIdeas.map((item, index) => {
                              // Only apply hashtag formatting if the current ideaType is hashtags AND the item is a hashtag result
+                             const ideaText = item.idea || item; // Support both object and string
                              if (ideaType === 'TikTok Shop Hashtag Pack') {
-                                 const hashtags = item.idea.split(/\s+/).filter(Boolean);
+                                 const hashtags = ideaText.split(/\s+/).filter(Boolean);
                                  return (
                                      <div key={index} className="group bg-slate-800/50 border border-slate-700 p-5 rounded-xl shadow-lg flex flex-col justify-between transform hover:-translate-y-1 transition-all duration-300 hover:border-purple-500/50">
                                          <p className="text-slate-300 mb-4 flex-grow break-words">
@@ -765,9 +781,9 @@ const GeneratorTool = ({ auth, user, db, userData, navigate, guestGenerations, s
                                          </p>
                                          <div className="flex justify-end items-center gap-2">
                                              <button onClick={() => handleToggleFavorite(item)} className={`transition-colors ${isSubscribed ? 'text-slate-500 hover:text-yellow-400' : 'text-slate-600 cursor-help'}`} title={isSubscribed ? 'Save to Favorites' : 'Upgrade to save ideas'}>
-                                                 <Star className={`w-5 h-5 ${user && isFavorite(item.idea) ? 'fill-current text-yellow-400' : ''}`} />
+                                                 <Star className={`w-5 h-5 ${user && isFavorite(ideaText) ? 'fill-current text-yellow-400' : ''}`} />
                                              </button>
-                                             <button onClick={() => handleCopy(item.idea, index)} className="self-end flex items-center bg-slate-700/50 text-slate-400 group-hover:bg-purple-500/20 group-hover:text-white px-3 py-1.5 rounded-md text-xs font-semibold transition-colors duration-200">
+                                             <button onClick={() => handleCopy(ideaText, index)} className="self-end flex items-center bg-slate-700/50 text-slate-400 group-hover:bg-purple-500/20 group-hover:text-white px-3 py-1.5 rounded-md text-xs font-semibold transition-colors duration-200">
                                                  <Copy className="w-3.5 h-3.5 mr-2" />
                                                  {copiedIndex === index ? 'Copied!' : 'Copy'}
                                              </button>
@@ -780,13 +796,13 @@ const GeneratorTool = ({ auth, user, db, userData, navigate, guestGenerations, s
                                  return (
                                      <div key={index} className="group bg-slate-800/50 border border-slate-700 p-5 rounded-xl shadow-lg flex flex-col justify-between transform hover:-translate-y-1 transition-all duration-300 hover:border-purple-500/50">
                                          <div className="text-slate-300 mb-4 flex-grow whitespace-pre-line" style={{fontFamily: 'inherit'}}>
-                                             {item.idea}
+                                             {ideaText}
                                          </div>
                                          <div className="flex justify-end items-center gap-2">
                                              <button onClick={() => handleToggleFavorite(item)} className={`transition-colors ${isSubscribed ? 'text-slate-500 hover:text-yellow-400' : 'text-slate-600 cursor-help'}`} title={isSubscribed ? 'Save to Favorites' : 'Upgrade to save ideas'}>
-                                                 <Star className={`w-5 h-5 ${user && isFavorite(item.idea) ? 'fill-current text-yellow-400' : ''}`} />
+                                                 <Star className={`w-5 h-5 ${user && isFavorite(ideaText) ? 'fill-current text-yellow-400' : ''}`} />
                                              </button>
-                                             <button onClick={() => handleCopy(item.idea, index)} className="self-end flex items-center bg-slate-700/50 text-slate-400 group-hover:bg-purple-500/20 group-hover:text-white px-3 py-1.5 rounded-md text-xs font-semibold transition-colors duration-200">
+                                             <button onClick={() => handleCopy(ideaText, index)} className="self-end flex items-center bg-slate-700/50 text-slate-400 group-hover:bg-purple-500/20 group-hover:text-white px-3 py-1.5 rounded-md text-xs font-semibold transition-colors duration-200">
                                                  <Copy className="w-3.5 h-3.5 mr-2" />
                                                  {copiedIndex === index ? 'Copied!' : 'Copy'}
                                              </button>
@@ -797,7 +813,7 @@ const GeneratorTool = ({ auth, user, db, userData, navigate, guestGenerations, s
                              // --- SPECIAL RENDERING FOR TIMED SCRIPT ---
                              if (ideaType === 'Timed Script') {
                                  // Split by newlines and filter out empty lines for scene-by-scene display
-                                 const scenes = item.idea.split(/\n|\r/).filter(line => line.trim().length > 0);
+                                 const scenes = ideaText.split(/\n|\r/).filter(line => line.trim().length > 0);
                                  return (
                                      <div key={index} className="group bg-slate-800/50 border border-slate-700 p-5 rounded-xl shadow-lg flex flex-col justify-between transform hover:-translate-y-1 transition-all duration-300 hover:border-purple-500/50">
                                          <div className="text-slate-300 mb-4 flex-grow space-y-2">
@@ -809,9 +825,9 @@ const GeneratorTool = ({ auth, user, db, userData, navigate, guestGenerations, s
                                          </div>
                                          <div className="flex justify-end items-center gap-2">
                                              <button onClick={() => handleToggleFavorite(item)} className={`transition-colors ${isSubscribed ? 'text-slate-500 hover:text-yellow-400' : 'text-slate-600 cursor-help'}`} title={isSubscribed ? 'Save to Favorites' : 'Upgrade to save ideas'}>
-                                                 <Star className={`w-5 h-5 ${user && isFavorite(item.idea) ? 'fill-current text-yellow-400' : ''}`} />
+                                                 <Star className={`w-5 h-5 ${user && isFavorite(ideaText) ? 'fill-current text-yellow-400' : ''}`} />
                                              </button>
-                                             <button onClick={() => handleCopy(item.idea, index)} className="self-end flex items-center bg-slate-700/50 text-slate-400 group-hover:bg-purple-500/20 group-hover:text-white px-3 py-1.5 rounded-md text-xs font-semibold transition-colors duration-200">
+                                             <button onClick={() => handleCopy(ideaText, index)} className="self-end flex items-center bg-slate-700/50 text-slate-400 group-hover:bg-purple-500/20 group-hover:text-white px-3 py-1.5 rounded-md text-xs font-semibold transition-colors duration-200">
                                                  <Copy className="w-3.5 h-3.5 mr-2" />
                                                  {copiedIndex === index ? 'Copied!' : 'Copy'}
                                              </button>
@@ -825,9 +841,9 @@ const GeneratorTool = ({ auth, user, db, userData, navigate, guestGenerations, s
                                  // Split by 'Part' or similar markers, fallback to newlines if not found
                                  const partRegex = /(Part \d+[:.-]?)/gi;
                                  let parts = [];
-                                 if (item.idea.match(partRegex)) {
+                                 if (ideaText.match(partRegex)) {
                                      // Split and keep the part label
-                                     const rawParts = item.idea.split(partRegex).map(s => s.trim()).filter(Boolean);
+                                     const rawParts = ideaText.split(partRegex).map(s => s.trim()).filter(Boolean);
                                      for (let i = 0; i < rawParts.length; i++) {
                                          if (/^Part \d+[:.-]?$/i.test(rawParts[i])) {
                                              parts.push({ label: rawParts[i], content: rawParts[i + 1] || '' });
@@ -839,7 +855,7 @@ const GeneratorTool = ({ auth, user, db, userData, navigate, guestGenerations, s
                                      }
                                  } else {
                                      // Fallback: split by newlines for each logical block
-                                     parts = item.idea.split(/\n+/).map((block, idx) => ({ label: `Part ${idx + 1}`, content: block.trim() })).filter(p => p.content);
+                                     parts = ideaText.split(/\n+/).map((block, idx) => ({ label: `Part ${idx + 1}`, content: block.trim() })).filter(p => p.content);
                                  }
                                  return (
                                      <div key={index} className="group bg-slate-800/50 border border-slate-700 p-5 rounded-xl shadow-lg flex flex-col justify-between transform hover:-translate-y-1 transition-all duration-300 hover:border-pink-500/50">
@@ -855,9 +871,9 @@ const GeneratorTool = ({ auth, user, db, userData, navigate, guestGenerations, s
                                          </div>
                                          <div className="flex justify-end items-center gap-2 mt-2">
                                              <button onClick={() => handleToggleFavorite(item)} className={`transition-colors ${isSubscribed ? 'text-slate-500 hover:text-yellow-400' : 'text-slate-600 cursor-help'}`} title={isSubscribed ? 'Save to Favorites' : 'Upgrade to save ideas'}>
-                                                 <Star className={`w-5 h-5 ${user && isFavorite(item.idea) ? 'fill-current text-yellow-400' : ''}`} />
+                                                 <Star className={`w-5 h-5 ${user && isFavorite(ideaText) ? 'fill-current text-yellow-400' : ''}`} />
                                              </button>
-                                             <button onClick={() => handleCopy(item.idea, index)} className="self-end flex items-center bg-slate-700/50 text-slate-400 group-hover:bg-purple-500/20 group-hover:text-white px-3 py-1.5 rounded-md text-xs font-semibold transition-colors duration-200">
+                                             <button onClick={() => handleCopy(ideaText, index)} className="self-end flex items-center bg-slate-700/50 text-slate-400 group-hover:bg-purple-500/20 group-hover:text-white px-3 py-1.5 rounded-md text-xs font-semibold transition-colors duration-200">
                                                  <Copy className="w-3.5 h-3.5 mr-2" />
                                                  {copiedIndex === index ? 'Copied!' : 'Copy'}
                                              </button>
@@ -865,6 +881,21 @@ const GeneratorTool = ({ auth, user, db, userData, navigate, guestGenerations, s
                                      </div>
                                  );
                              }
+                             // Default rendering for all other types
+                             return (
+                                 <div key={index} className="group bg-slate-800/50 border border-slate-700 p-5 rounded-xl shadow-lg flex flex-col justify-between transform hover:-translate-y-1 transition-all duration-300 hover:border-purple-500/50">
+                                     <p className="text-slate-300 mb-4 flex-grow break-words">{ideaText}</p>
+                                     <div className="flex justify-end items-center gap-2">
+                                         <button onClick={() => handleToggleFavorite(item)} className={`transition-colors ${isSubscribed ? 'text-slate-500 hover:text-yellow-400' : 'text-slate-600 cursor-help'}`} title={isSubscribed ? 'Save to Favorites' : 'Upgrade to save ideas'}>
+                                             <Star className={`w-5 h-5 ${user && isFavorite(ideaText) ? 'fill-current text-yellow-400' : ''}`} />
+                                         </button>
+                                         <button onClick={() => handleCopy(ideaText, index)} className="self-end flex items-center bg-slate-700/50 text-slate-400 group-hover:bg-purple-500/20 group-hover:text-white px-3 py-1.5 rounded-md text-xs font-semibold transition-colors duration-200">
+                                             <Copy className="w-3.5 h-3.5 mr-2" />
+                                             {copiedIndex === index ? 'Copied!' : 'Copy'}
+                                         </button>
+                                     </div>
+                                 </div>
+                             );
                          })}
                      </div>
                      <div className="mt-4 text-center">
