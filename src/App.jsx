@@ -993,7 +993,7 @@ const GeneratorTool = ({ auth, user, db, userData, navigate, guestGenerations, s
                          })}
                      </div>
                      <div className="mt-4 text-center">
-                         <button onClick={() => setGeneratedIdeas([])} className="text-purple-400 hover:text-purple-300 font-semibold text-sm">
+                         <button onClick={handleGenerateIdeas} className="text-purple-400 hover:text-purple-300 font-semibold text-sm">
                              Generate more ideas
                          </button>
                      </div>
