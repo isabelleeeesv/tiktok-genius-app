@@ -624,7 +624,7 @@ const GeneratorTool = ({ auth, user, db, userData, navigate, guestGenerations, s
                 const favToRemove = userData.favorites.find(fav => fav.idea === idea.idea);
                 if(favToRemove) await updateDoc(userDocRef, { favorites: arrayRemove(favToRemove) });
              } else {
-                 await updateDoc(userDocRef, { favorites: arrayUnion({ ...idea, savedAt: new Date().toISOString() }) });
+                 await updateDoc(userDocRef, { favorites: arrayUnion({ ...idea, savedAt: new Date().toISOString(), product, ideaType }) });
              }
         } catch(error) {
             console.error("Error toggling favorite:", error);
@@ -708,6 +708,9 @@ const GeneratorTool = ({ auth, user, db, userData, navigate, guestGenerations, s
                             {userData?.favorites?.length > 0 ? [...userData.favorites].reverse().map((fav, index) => (
                                 <div key={index} className="bg-slate-800 p-4 rounded-lg mb-3">
                                     <p className="text-slate-300">{fav.idea}</p>
+                                    {fav.product && fav.ideaType && (
+                                        <div className="text-xs text-slate-400 mt-1">Searched: <span className="font-semibold">{fav.product}</span> <span className="text-slate-500">|</span> <span>{fav.ideaType}</span></div>
+                                    )}
                                     <div className="flex justify-end gap-2 mt-2">
                                         <button onClick={() => handleToggleFavorite(fav)} className="text-slate-500 hover:text-red-500"><X className="w-4 h-4"/></button>
                                         <button onClick={() => handleCopy(fav.idea, `fav-${index}`)} className="text-slate-500 hover:text-white"><Copy className="w-4 h-4"/></button>
