@@ -166,15 +166,40 @@ const App = () => {
     
     // --- SCROLL LOCK FOR MODALS (MOBILE UX) ---
     useEffect(() => {
-        const modalOpen = showOnboarding || showLoginModal;
+        let lastScrollY = window.scrollY;
+        const modalOpen = showOnboarding || showLoginModal || showLoginBonusModal;
         if (modalOpen) {
+            lastScrollY = window.scrollY;
             document.body.style.overflow = 'hidden';
+            // On mobile, fix body position to prevent scroll jump
+            document.body.style.position = 'fixed';
+            document.body.style.top = `-${lastScrollY}px`;
+            document.body.style.width = '100%';
         } else {
+            // Restore scroll position
             document.body.style.overflow = '';
+            document.body.style.position = '';
+            document.body.style.top = '';
+            document.body.style.width = '';
+            window.scrollTo(0, lastScrollY);
         }
         // Clean up on unmount
-        return () => { document.body.style.overflow = ''; };
-    }, [showOnboarding, showLoginModal]);
+        return () => {
+            document.body.style.overflow = '';
+            document.body.style.position = '';
+            document.body.style.top = '';
+            document.body.style.width = '';
+        };
+    }, [showOnboarding, showLoginModal, showLoginBonusModal]);
+
+    // --- DEBUG: LOG SCROLL EVENTS ---
+    useEffect(() => {
+        const onScroll = () => {
+            console.log('Scroll event:', window.scrollY);
+        };
+        window.addEventListener('scroll', onScroll);
+        return () => window.removeEventListener('scroll', onScroll);
+    }, []);
 
     // --- BODY SCROLL LOCK FOR MODALS (MOBILE-FRIENDLY) ---
     useEffect(() => {
