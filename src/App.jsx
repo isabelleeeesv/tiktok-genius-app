@@ -415,6 +415,8 @@ const LoginPage = ({ auth, navigate, onClose }) => {
             <form onSubmit={handleSubmit} className="flex flex-col gap-4">
                 <input
                     type="email"
+                    name="email"
+                    id="email"
                     value={email}
                     onChange={e => setEmail(e.target.value)}
                     placeholder="Email"
@@ -423,6 +425,8 @@ const LoginPage = ({ auth, navigate, onClose }) => {
                 />
                 <input
                     type="password"
+                    name="password"
+                    id="password"
                     value={password}
                     onChange={e => setPassword(e.target.value)}
                     placeholder="Password (min. 6 characters)"
@@ -478,7 +482,7 @@ const GeneratorTool = ({ auth, user, db, userData, navigate, guestGenerations, s
     const ideaTypes = [
         { name: 'Hooks', icon: <Sparkles />, prompt: "short, scroll-stopping hooks (3-7 seconds long)", premium: false },
         { name: 'Video Ideas', icon: <Film />, prompt: "creative video concepts (problem/solution, unboxing)", premium: false },
-        { name: 'Tips & Tricks', icon: <Lightbulb />, prompt: "monetization tips and tricks for affiliates", premium: false },
+        { name: 'Tips & Tricks', icon: <Lightbulb />, prompt: "Give me a list of 6 actionable, creative monetization tips and tricks for TikTok Shop affiliates. Each tip should be 1-2 sentences, practical, and easy to implement. Format as a numbered list.", premium: false },
         { name: 'Viral Scripts', icon: <FileText />, prompt: "a 3-part viral video script template with placeholders", premium: true },
         { name: 'TikTok Shop Hashtag Pack', icon: <TrendingUp />, prompt: `a pack of 15-20 high-performing, relevant hashtags for a TikTok Shop post about the following product. The hashtags should be a mix of trending, niche, and general TikTok Shop/affiliate tags. Only include the hashtags (no explanations), separated by spaces, and do NOT include the # symbol in the output (the user will copy and paste them).`, premium: true },
         { name: 'B-roll Prompts', icon: <Film />, prompt: `Give me a grouped, themed list of creative B-roll shot ideas for a TikTok video about the following product. Use 4-5 themed sections (with emoji headers, e.g. "💎 Glow-Up Edition", "💅 That Girl", "🛍️ Buy It Energy", "💥 Bold", "🫶 Sentimental"). For each section, give 4-5 specific, trendy, and visually creative B-roll prompts as bullet points. Use Gen Z/creator energy, TikTok/Shop/UGC style, and include emojis and formatting. Make the ideas feel fresh, viral, and ready to copy-paste. Format as markdown or plain text with emoji headers and bullet points. Product:`, premium: true },
@@ -726,12 +730,14 @@ const GeneratorTool = ({ auth, user, db, userData, navigate, guestGenerations, s
                 <div className="flex flex-col sm:flex-row gap-4 mb-5">
                     <input
                         type="text"
+                        name="product"
+                        id="product"
                         value={product}
                         onChange={(e) => setProduct(e.target.value)}
                         placeholder="E.g., 'portable blender', 'skincare serum'"
                         className="flex-grow bg-slate-900/80 border border-slate-700 rounded-lg px-4 py-3 text-white placeholder-slate-500 focus:ring-2 focus:ring-purple-500/50 focus:outline-none transition-all"
                     />
-                     <button
+                    <button
                         onClick={handleGenerateIdeas}
                         disabled={isLoading || (!isSubscribed && remainingGenerations <= 0)}
                         className="flex items-center justify-center bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:shadow-xl hover:shadow-purple-500/20 hover:scale-105 disabled:opacity-50 disabled:hover:scale-100 disabled:cursor-not-allowed transition-all"
