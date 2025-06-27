@@ -482,7 +482,7 @@ const GeneratorTool = ({ auth, user, db, userData, navigate, guestGenerations, s
         { name: 'Viral Scripts', icon: <FileText />, prompt: "a 3-part viral video script template with placeholders", premium: true },
         { name: 'TikTok Shop Hashtag Pack', icon: <TrendingUp />, prompt: `a pack of 15-20 high-performing, relevant hashtags for a TikTok Shop post about the following product. The hashtags should be a mix of trending, niche, and general TikTok Shop/affiliate tags. Only include the hashtags (no explanations), separated by spaces, and do NOT include the # symbol in the output (the user will copy and paste them).`, premium: true },
         { name: 'Timed Script', icon: <FileText />, prompt: "a full TikTok video script for a Shop/Affiliate product, broken down by suggested timestamps and scene descriptions. For each scene, provide: (1) Timestamp (e.g. 0:00-0:03), (2) Scene description, (3) Script/dialogue. Format as an array of scenes, each with these fields. Make it engaging and optimized for TikTok virality.", premium: true },
-        { name: 'B-roll Prompts', icon: <Film />, prompt: "a list of 6 creative B-roll shot ideas for a TikTok video about the following product. Each B-roll prompt should be visually descriptive, relevant to the product, and help make the video more engaging. Format as a simple list of B-roll shot descriptions.", premium: true },
+        { name: 'B-roll Prompts', icon: <Film />, prompt: `Give me a grouped, themed list of creative B-roll shot ideas for a TikTok video about the following product. Use 4-5 themed sections (with emoji headers, e.g. "💎 Glow-Up Edition", "💅 That Girl", "🛍️ Buy It Energy", "💥 Bold", "🫶 Sentimental"). For each section, give 4-5 specific, trendy, and visually creative B-roll prompts as bullet points. Use Gen Z/creator energy, TikTok/Shop/UGC style, and include emojis and formatting. Make the ideas feel fresh, viral, and ready to copy-paste. Format as markdown or plain text with emoji headers and bullet points. Product:`, premium: true },
     ];
 
     const handleGenerateIdeas = async () => {
@@ -756,20 +756,65 @@ const GeneratorTool = ({ auth, user, db, userData, navigate, guestGenerations, s
                 {generatedIdeas.length > 0 && (
                      <>
                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-fade-in">
-                         {generatedIdeas.map((item, index) => (
-                             <div key={index} className="group bg-slate-800/50 border border-slate-700 p-5 rounded-xl shadow-lg flex flex-col justify-between transform hover:-translate-y-1 transition-all duration-300 hover:border-purple-500/50">
-                                 <p className="text-slate-300 mb-4 flex-grow">{item.idea}</p>
-                                 <div className="flex justify-end items-center gap-2">
-                                     <button onClick={() => handleToggleFavorite(item)} className={`transition-colors ${isSubscribed ? 'text-slate-500 hover:text-yellow-400' : 'text-slate-600 cursor-help'}`} title={isSubscribed ? 'Save to Favorites' : 'Upgrade to save ideas'}>
-                                         <Star className={`w-5 h-5 ${user && isFavorite(item.idea) ? 'fill-current text-yellow-400' : ''}`} />
-                                     </button>
-                                     <button onClick={() => handleCopy(item.idea, index)} className="self-end flex items-center bg-slate-700/50 text-slate-400 group-hover:bg-purple-500/20 group-hover:text-white px-3 py-1.5 rounded-md text-xs font-semibold transition-colors duration-200">
-                                         <Copy className="w-3.5 h-3.5 mr-2" />
-                                         {copiedIndex === index ? 'Copied!' : 'Copy'}
-                                     </button>
+                         {generatedIdeas.map((item, index) => {
+                             // Special rendering for TikTok Shop Hashtag Pack
+                             if (ideaType === 'TikTok Shop Hashtag Pack') {
+                                 // Split by space, add #, join with space
+                                 const hashtags = item.idea.split(/\s+/).filter(Boolean);
+                                 return (
+                                     <div key={index} className="group bg-slate-800/50 border border-slate-700 p-5 rounded-xl shadow-lg flex flex-col justify-between transform hover:-translate-y-1 transition-all duration-300 hover:border-purple-500/50">
+                                         <p className="text-slate-300 mb-4 flex-grow break-words">
+                                             {hashtags.map((tag, i) => (
+                                                 <span key={i} className="inline-block mr-2">#{tag}</span>
+                                             ))}
+                                         </p>
+                                         <div className="flex justify-end items-center gap-2">
+                                             <button onClick={() => handleToggleFavorite(item)} className={`transition-colors ${isSubscribed ? 'text-slate-500 hover:text-yellow-400' : 'text-slate-600 cursor-help'}`} title={isSubscribed ? 'Save to Favorites' : 'Upgrade to save ideas'}>
+                                                 <Star className={`w-5 h-5 ${user && isFavorite(item.idea) ? 'fill-current text-yellow-400' : ''}`} />
+                                             </button>
+                                             <button onClick={() => handleCopy(item.idea, index)} className="self-end flex items-center bg-slate-700/50 text-slate-400 group-hover:bg-purple-500/20 group-hover:text-white px-3 py-1.5 rounded-md text-xs font-semibold transition-colors duration-200">
+                                                 <Copy className="w-3.5 h-3.5 mr-2" />
+                                                 {copiedIndex === index ? 'Copied!' : 'Copy'}
+                                             </button>
+                                         </div>
+                                     </div>
+                                 );
+                             }
+                             // Special rendering for B-roll Prompts: preserve line breaks and formatting
+                             if (ideaType === 'B-roll Prompts') {
+                                 return (
+                                     <div key={index} className="group bg-slate-800/50 border border-slate-700 p-5 rounded-xl shadow-lg flex flex-col justify-between transform hover:-translate-y-1 transition-all duration-300 hover:border-purple-500/50">
+                                         <div className="text-slate-300 mb-4 flex-grow whitespace-pre-line" style={{fontFamily: 'inherit'}}>
+                                             {item.idea}
+                                         </div>
+                                         <div className="flex justify-end items-center gap-2">
+                                             <button onClick={() => handleToggleFavorite(item)} className={`transition-colors ${isSubscribed ? 'text-slate-500 hover:text-yellow-400' : 'text-slate-600 cursor-help'}`} title={isSubscribed ? 'Save to Favorites' : 'Upgrade to save ideas'}>
+                                                 <Star className={`w-5 h-5 ${user && isFavorite(item.idea) ? 'fill-current text-yellow-400' : ''}`} />
+                                             </button>
+                                             <button onClick={() => handleCopy(item.idea, index)} className="self-end flex items-center bg-slate-700/50 text-slate-400 group-hover:bg-purple-500/20 group-hover:text-white px-3 py-1.5 rounded-md text-xs font-semibold transition-colors duration-200">
+                                                 <Copy className="w-3.5 h-3.5 mr-2" />
+                                                 {copiedIndex === index ? 'Copied!' : 'Copy'}
+                                             </button>
+                                         </div>
+                                     </div>
+                                 );
+                             }
+                             // Default rendering for other idea types
+                             return (
+                                 <div key={index} className="group bg-slate-800/50 border border-slate-700 p-5 rounded-xl shadow-lg flex flex-col justify-between transform hover:-translate-y-1 transition-all duration-300 hover:border-purple-500/50">
+                                     <p className="text-slate-300 mb-4 flex-grow">{item.idea}</p>
+                                     <div className="flex justify-end items-center gap-2">
+                                         <button onClick={() => handleToggleFavorite(item)} className={`transition-colors ${isSubscribed ? 'text-slate-500 hover:text-yellow-400' : 'text-slate-600 cursor-help'}`} title={isSubscribed ? 'Save to Favorites' : 'Upgrade to save ideas'}>
+                                             <Star className={`w-5 h-5 ${user && isFavorite(item.idea) ? 'fill-current text-yellow-400' : ''}`} />
+                                         </button>
+                                         <button onClick={() => handleCopy(item.idea, index)} className="self-end flex items-center bg-slate-700/50 text-slate-400 group-hover:bg-purple-500/20 group-hover:text-white px-3 py-1.5 rounded-md text-xs font-semibold transition-colors duration-200">
+                                             <Copy className="w-3.5 h-3.5 mr-2" />
+                                             {copiedIndex === index ? 'Copied!' : 'Copy'}
+                                         </button>
+                                     </div>
                                  </div>
-                             </div>
-                         ))}
+                             );
+                         })}
                      </div>
                      {/* Disclaimer for generated ideas */}
                      <div className="text-xs text-slate-400 mt-4 text-center">
