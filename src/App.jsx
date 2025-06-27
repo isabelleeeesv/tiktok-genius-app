@@ -870,6 +870,50 @@ const GeneratorTool = ({ auth, user, db, userData, navigate, guestGenerations, s
                                              })}
                                          </div>
                                          <div className="flex justify-end items-center gap-2 mt-2">
+                                             <button onClick={() => handleToggleFavorite(item)} className={`transition-colors ${isSubscribed ? 'text-slate-500 hover:text-yellow-400' : 'text-slate-600 cursor-help'}`} title={isSubscribed ? 'Save to Favorites' : 'Upgrade to save ideas'}>
+                                                 <Star className={`w-5 h-5 ${user && isFavorite(item.idea) ? 'fill-current text-yellow-400' : ''}`} />
+                                             </button>
+                                             <button onClick={() => handleCopy(item.idea, index)} className="self-end flex items-center bg-slate-700/50 text-slate-400 group-hover:bg-purple-500/20 group-hover:text-white px-3 py-1.5 rounded-md text-xs font-semibold transition-colors duration-200">
+                                                 <Copy className="w-3.5 h-3.5 mr-2" />
+                                                 {copiedIndex === index ? 'Copied!' : 'Copy'}
+                                             </button>
+                                         </div>
+                                     </div>
+                                 );
+                             }
+                         })}
+                     </div>
+                     <div className="mt-4 text-center">
+                         <button onClick={() => setGeneratedIdeas([])} className="text-purple-400 hover:text-purple-300 font-semibold text-sm">
+                             Generate more ideas
+                         </button>
+                     </div>
+                     </>
+                )}
+            </div>
+        </div>
+    );
+};
+
+const ManageSubscriptionPage = ({ user, navigate }) => {
+    const [error, setError] = useState(null);
+
+    useEffect(() => {
+        const goToPortal = async () => {
+            if (!user) return;
+            try {
+                const response = await fetch('/api/create-portal-session', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ userId: user.uid }),
+                });
+                const data = await response.json();
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+                window.location.href = data.url;
+            } catch (err) {
+                setError(`Could not manage subscription: ${err.message}`);
             }
         };
         goToPortal();
