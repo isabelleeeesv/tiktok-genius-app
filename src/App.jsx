@@ -482,7 +482,7 @@ const GeneratorTool = ({ auth, user, db, userData, navigate, guestGenerations, s
         { name: 'Viral Scripts', icon: <FileText />, prompt: "a 3-part viral video script template with placeholders", premium: true },
         { name: 'TikTok Shop Hashtag Pack', icon: <TrendingUp />, prompt: `a pack of 15-20 high-performing, relevant hashtags for a TikTok Shop post about the following product. The hashtags should be a mix of trending, niche, and general TikTok Shop/affiliate tags. Only include the hashtags (no explanations), separated by spaces, and do NOT include the # symbol in the output (the user will copy and paste them).`, premium: true },
         { name: 'B-roll Prompts', icon: <Film />, prompt: `Give me a grouped, themed list of creative B-roll shot ideas for a TikTok video about the following product. Use 4-5 themed sections (with emoji headers, e.g. "💎 Glow-Up Edition", "💅 That Girl", "🛍️ Buy It Energy", "💥 Bold", "🫶 Sentimental"). For each section, give 4-5 specific, trendy, and visually creative B-roll prompts as bullet points. Use Gen Z/creator energy, TikTok/Shop/UGC style, and include emojis and formatting. Make the ideas feel fresh, viral, and ready to copy-paste. Format as markdown or plain text with emoji headers and bullet points. Product:`, premium: true },
-        { name: 'Timed Script', icon: <FileText />, prompt: `a TikTok video script for a product, broken down by timestamped scenes. Always output at least 4-6 scenes, each starting with a timestamp (e.g., "0:00 - Hook", "0:03 - Demo", "0:10 - Call to Action"). Each scene should be on a new line, clearly separated, and describe what happens in that part of the video. Do NOT return a single paragraph or a generic title. Example format:\n0:00 - Hook: [describe the opening]\n0:03 - Demo: [describe the main demo]\n0:10 - Social Proof: [describe testimonial or proof]\n0:13 - Call to Action: [describe the ending CTA]`, premium: true },
+        { name: 'Timed Script', icon: <FileText />, prompt: `a TikTok video director's shot list for a product, broken down by timestamps (e.g., "0:00 - Hook", "0:03 - Demo"). For each timestamp, specify: (1) the on-screen action, (2) camera angle or movement, (3) any sound effects or transitions, and (4) a note on viral pacing or energy. Always output at least 4-6 scenes, each on a new line, clearly separated. Make it visually descriptive and ready for a creator to film step-by-step. Do NOT return a single paragraph or a generic title. Example format:\n0:00 - Hook: [describe the opening, camera angle, SFX, energy]\n0:03 - Demo: [describe demo, camera movement, SFX, energy]\n0:10 - Social Proof: [describe testimonial, camera, SFX, energy]\n0:13 - Call to Action: [describe ending, camera, SFX, energy]`, premium: true },
     ];
 
     const handleGenerateIdeas = async () => {
@@ -827,49 +827,49 @@ const GeneratorTool = ({ auth, user, db, userData, navigate, guestGenerations, s
                                      </div>
                                  );
                              }
-                             // Default rendering for other idea types
-                             return (
-                                 <div key={index} className="group bg-slate-800/50 border border-slate-700 p-5 rounded-xl shadow-lg flex flex-col justify-between transform hover:-translate-y-1 transition-all duration-300 hover:border-purple-500/50">
-                                     <p className="text-slate-300 mb-4 flex-grow">{item.idea}</p>
-                                     <div className="flex justify-end items-center gap-2">
-                                         <button onClick={() => handleToggleFavorite(item)} className={`transition-colors ${isSubscribed ? 'text-slate-500 hover:text-yellow-400' : 'text-slate-600 cursor-help'}`} title={isSubscribed ? 'Save to Favorites' : 'Upgrade to save ideas'}>
-                                             <Star className={`w-5 h-5 ${user && isFavorite(item.idea) ? 'fill-current text-yellow-400' : ''}`} />
-                                         </button>
-                                         <button onClick={() => handleCopy(item.idea, index)} className="self-end flex items-center bg-slate-700/50 text-slate-400 group-hover:bg-purple-500/20 group-hover:text-white px-3 py-1.5 rounded-md text-xs font-semibold transition-colors duration-200">
-                                             <Copy className="w-3.5 h-3.5 mr-2" />
-                                             {copiedIndex === index ? 'Copied!' : 'Copy'}
-                                         </button>
-                                     </div>
-                                 </div>
-                             );
-                         })}
-                     </div>
-                     {/* Disclaimer for generated ideas */}
-                     <div className="text-xs text-slate-400 mt-4 text-center">
-                        <span>Disclaimer: These AI-generated ideas are for inspiration only and are not guaranteed to be 100% accurate or suitable for your specific needs.</span>
-                     </div>
-                     </>
-                )}
-            </div>
-        </div>
-    );
-};
-
-const ManageSubscriptionPage = ({ user, navigate }) => {
-    const [error, setError] = useState(null);
-    useEffect(() => {
-        const goToPortal = async () => {
-            try {
-                const response = await fetch('/api/create-portal-session', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ userId: user.uid }),
-                });
-                const data = await response.json();
-                if (data.error) throw new Error(data.error);
-                window.location.href = data.url;
-            } catch (err) {
-                setError(err.message || 'Could not open subscription portal.');
+                             // --- SPECIAL RENDERING FOR VIRAL SCRIPTS ---
+                             if (ideaType === 'Viral Scripts') {
+                                 // Split into sections by headers (e.g., Hook, Body, Call to Action)
+                                 const sectionRegex = /(^|\n)([A-Z][A-Za-z ]+):/g;
+                                 const sections = [];
+                                 let lastIndex = 0;
+                                 let match;
+                                 let text = item.idea;
+                                 while ((match = sectionRegex.exec(text)) !== null) {
+                                     if (match.index > lastIndex) {
+                                         sections.push(text.slice(lastIndex, match.index));
+                                     }
+                                     lastIndex = match.index;
+                                 }
+                                 sections.push(text.slice(lastIndex));
+                                 // Highlight [PLACEHOLDER]s
+                                 const highlightPlaceholders = (str) => str.replace(/\[([^\]]+)\]/g, '<span class="bg-yellow-300/20 text-yellow-200 px-1 rounded font-semibold">[$1]</span>');
+                                 return (
+                                     <div key={index} className="group bg-gradient-to-br from-slate-800/80 to-slate-900/80 border border-purple-700/40 p-6 rounded-2xl shadow-xl flex flex-col justify-between transform hover:-translate-y-1 transition-all duration-300 hover:border-pink-500/60">
+                                         <div className="text-slate-200 mb-4 flex-grow space-y-3">
+                                             {item.idea.split(/\n(?=[A-Z][A-Za-z ]+:)/g).map((section, idx) => {
+                                                 // Extract header and body
+                                                 const headerMatch = section.match(/^([A-Z][A-Za-z ]+):/);
+                                                 let header = headerMatch ? headerMatch[1] : null;
+                                                 let body = headerMatch ? section.replace(/^([A-Z][A-Za-z ]+):/, '').trim() : section.trim();
+                                                 // Add emoji to headers
+                                                 let emoji = '';
+                                                 if (header) {
+                                                     if (header.toLowerCase().includes('hook')) emoji = '🎣';
+                                                     else if (header.toLowerCase().includes('body')) emoji = '💡';
+                                                     else if (header.toLowerCase().includes('call')) emoji = '📢';
+                                                     else if (header.toLowerCase().includes('twist')) emoji = '🔥';
+                                                     else emoji = '✨';
+                                                 }
+                                                 return (
+                                                     <div key={idx} className="mb-2">
+                                                         {header && <div className="font-bold text-pink-400 flex items-center gap-2 text-base mb-1">{emoji} {header}</div>}
+                                                         <div className="whitespace-pre-line text-slate-100" dangerouslySetInnerHTML={{__html: highlightPlaceholders(body)}} />
+                                                     </div>
+                                                 );
+                                             })}
+                                         </div>
+                                         <div className="flex justify-end items-center gap-2 mt-2">
             }
         };
         goToPortal();
