@@ -830,29 +830,17 @@ const GeneratorTool = ({ auth, user, db, userData, navigate, guestGenerations, s
                              // --- SPECIAL RENDERING FOR VIRAL SCRIPTS ---
                              if (ideaType === 'Viral Scripts') {
                                  // Split into sections by headers (e.g., Hook, Body, Call to Action)
-                                 const sectionRegex = /(^|\n)([A-Z][A-Za-z ]+):/g;
-                                 const sections = [];
-                                 let lastIndex = 0;
-                                 let match;
-                                 let text = item.idea;
-                                 while ((match = sectionRegex.exec(text)) !== null) {
-                                     if (match.index > lastIndex) {
-                                         sections.push(text.slice(lastIndex, match.index));
-                                     }
-                                     lastIndex = match.index;
-                                 }
-                                 sections.push(text.slice(lastIndex));
-                                 // Highlight [PLACEHOLDER]s
-                                 const highlightPlaceholders = (str) => str.replace(/\[([^\]]+)\]/g, '<span class="bg-yellow-300/20 text-yellow-200 px-1 rounded font-semibold">[$1]</span>');
+                                 const sectionRegex = /\n(?=[A-Z][A-Za-z ]+:)/g;
+                                 const sections = item.idea.split(sectionRegex).map(s => s.trim()).filter(Boolean);
                                  return (
-                                     <div key={index} className="group bg-gradient-to-br from-slate-800/80 to-slate-900/80 border border-purple-700/40 p-6 rounded-2xl shadow-xl flex flex-col justify-between transform hover:-translate-y-1 transition-all duration-300 hover:border-pink-500/60">
-                                         <div className="text-slate-200 mb-4 flex-grow space-y-3">
-                                             {item.idea.split(/\n(?=[A-Z][A-Za-z ]+:)/g).map((section, idx) => {
+                                     <div key={index} className="group bg-slate-800/50 border border-slate-700 p-5 rounded-xl shadow-lg flex flex-col justify-between transform hover:-translate-y-1 transition-all duration-300 hover:border-pink-500/50">
+                                         <div className="text-slate-300 mb-4 flex-grow space-y-2">
+                                             {sections.map((section, idx) => {
                                                  // Extract header and body
                                                  const headerMatch = section.match(/^([A-Z][A-Za-z ]+):/);
                                                  let header = headerMatch ? headerMatch[1] : null;
                                                  let body = headerMatch ? section.replace(/^([A-Z][A-Za-z ]+):/, '').trim() : section.trim();
-                                                 // Add emoji to headers
+                                                 // Add emoji to headers for a touch of style
                                                  let emoji = '';
                                                  if (header) {
                                                      if (header.toLowerCase().includes('hook')) emoji = '🎣';
@@ -862,9 +850,9 @@ const GeneratorTool = ({ auth, user, db, userData, navigate, guestGenerations, s
                                                      else emoji = '✨';
                                                  }
                                                  return (
-                                                     <div key={idx} className="mb-2">
+                                                     <div key={idx} className="bg-slate-900/70 border border-slate-700 rounded-lg p-3 mb-2">
                                                          {header && <div className="font-bold text-pink-400 flex items-center gap-2 text-base mb-1">{emoji} {header}</div>}
-                                                         <div className="whitespace-pre-line text-slate-100" dangerouslySetInnerHTML={{__html: highlightPlaceholders(body)}} />
+                                                         <div className="whitespace-pre-line text-slate-100">{body}</div>
                                                      </div>
                                                  );
                                              })}
