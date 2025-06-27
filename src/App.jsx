@@ -31,6 +31,7 @@ const VITE_STRIPE_PRICE_ID = import.meta.env.VITE_STRIPE_PRICE_ID;
 const VITE_MAILERLITE_API_KEY = import.meta.env.VITE_MAILERLITE_API_KEY;
 const VITE_MAILERLITE_LIST_ID = import.meta.env.VITE_MAILERLITE_LIST_ID; // Set this in your .env
 const DAILY_FREE_LIMIT = 3;
+const FREE_FEATURES = ['Hooks', 'Video Ideas', 'Tips & Tricks'];
 
 // --- MAIN APP COMPONENT ---
 const App = () => {
@@ -45,6 +46,7 @@ const App = () => {
     const [showLoginModal, setShowLoginModal] = useState(false);
     const [guestGenerations, setGuestGenerations] = useState({ count: 0, lastReset: '' });
     const [showOnboarding, setShowOnboarding] = useState(false);
+    const [showLoginBonusModal, setShowLoginBonusModal] = useState(false);
 
     const navigate = useCallback((page) => setCurrentPage(page), []);
     
@@ -235,6 +237,16 @@ const App = () => {
                     </div>
                 </div>
             )}
+            {showLoginBonusModal && (
+                <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4" onClick={() => setShowLoginBonusModal(false)}>
+                    <div className="bg-slate-800/90 p-8 rounded-2xl shadow-2xl w-full max-w-lg relative text-center" onClick={e => e.stopPropagation()}>
+                        <button className="absolute top-2 right-2 text-slate-400 hover:text-white" onClick={() => setShowLoginBonusModal(false)}><X /></button>
+                        <h2 className="text-2xl font-bold mb-2">Unlock More Free Generations!</h2>
+                        <p className="text-slate-300 mb-4">Log in to receive <b>{DAILY_FREE_LIMIT} free daily generations for each free plan feature</b> (Hooks, Video Ideas, Tips & Tricks). Explore more ideas every day!</p>
+                        <button className="bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold py-2 px-6 rounded-lg shadow-lg hover:scale-105 transition-all" onClick={() => { setShowLoginBonusModal(false); setShowLoginModal(true); }}>Login / Sign Up</button>
+                    </div>
+                </div>
+            )}
 
             <div className="absolute top-0 left-0 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-purple-600/20 rounded-full filter blur-3xl opacity-50"></div>
             <div className="absolute bottom-0 right-0 translate-x-1/2 translate-y-1/2 w-[600px] h-[600px] bg-pink-500/20 rounded-full filter blur-3xl opacity-50"></div>
@@ -324,8 +336,8 @@ const PricingPage = ({ user, navigate }) => {
                          <span className="text-5xl font-extrabold">Free</span>
                      </div>
                      <ul className="space-y-4 mb-8">
-                         <li className="flex items-center"><CheckCircle className="w-5 h-5 text-green-400 mr-3" /> {DAILY_FREE_LIMIT} Daily Generations</li>
-                         <li className="flex items-center"><CheckCircle className="w-5 h-5 text-green-400 mr-3" /> Basic Idea Categories</li>
+                        <li className="flex items-center"><CheckCircle className="w-5 h-5 text-green-400 mr-3" /> 3 Daily Generations <span className="text-xs text-slate-400">(per feature when logged in, 3 total as guest)</span></li>
+                        <li className="flex items-center"><CheckCircle className="w-5 h-5 text-green-400 mr-3" /> Basic Idea Categories</li>
                      </ul>
                      <button disabled className="w-full text-center bg-slate-700 text-slate-400 font-bold py-3 px-6 rounded-lg cursor-not-allowed">Your Current Plan</button>
                  </div>
@@ -464,6 +476,10 @@ const GeneratorTool = ({ auth, user, db, userData, navigate, guestGenerations, s
     const [showFavorites, setShowFavorites] = useState(false);
     const [isManagingSub, setIsManagingSub] = useState(false);
     const [logoutLoading, setLogoutLoading] = useState(false);
+    // --- FREE GENERATION TRACKING LOGIC ---
+    // For guests: 3 total per day
+    // For logged-in free users: 3 per free feature per day
+    const [perFeatureUsage, setPerFeatureUsage] = useState({});
     
     // Debug: log generatedIdeas state before render
     useEffect(() => {
@@ -476,36 +492,67 @@ const GeneratorTool = ({ auth, user, db, userData, navigate, guestGenerations, s
     // Use owner override for subscription
     const isSubscribed = isOwner || userData?.subscription?.status === 'active';
     
+    useEffect(() => {
+        if (user && !userData?.subscription?.status) {
+            // Track per-feature usage in local state (for UI), but real source of truth is userData.generationsByFeature
+            const today = new Date().toISOString().split('T')[0];
+            let usage = {};
+            if (userData?.generationsByFeature && userData.generationsByFeature.lastReset === today) {
+                usage = { ...userData.generationsByFeature };
+            } else {
+                FREE_FEATURES.forEach(f => { usage[f] = 0; });
+                usage.lastReset = today;
+            }
+            setPerFeatureUsage(usage);
+        }
+    }, [user, userData]);
+
+    // --- REMAINING GENERATIONS LOGIC ---
     let remainingGenerations;
     if (user) {
-        remainingGenerations = isSubscribed ? "Unlimited" : DAILY_FREE_LIMIT - (userData?.generations?.count || 0);
+        if (isSubscribed) {
+            remainingGenerations = 'Unlimited';
+        } else {
+            // Per-feature remaining for free users
+            remainingGenerations = {};
+            FREE_FEATURES.forEach(f => {
+                const used = userData?.generationsByFeature?.[f] || 0;
+                remainingGenerations[f] = DAILY_FREE_LIMIT - used;
+            });
+        }
     } else {
         remainingGenerations = DAILY_FREE_LIMIT - (guestGenerations.count || 0);
     }
 
-
     const ideaTypes = [
-        { name: 'Hooks', icon: <Sparkles />, prompt: "Give me a list of 6 ultra-viral, scroll-stopping TikTok hooks for TikTok Shop affiliates. Each hook should be super short (3-7 seconds), use trending sounds or formats, and feel native to the For You Page. Use Gen Z language, emojis, and TikTok trends. Make them impossible to scroll past.", premium: false },
-        { name: 'Video Ideas', icon: <Film />, prompt: "Give me a list of 6 ultra-viral, native TikTok video ideas for TikTok Shop affiliates. Each idea should start with a scroll-stopping hook, use trending sounds or formats, and be super short (under 15 seconds). Focus on storytelling, surprise, humor, or transformation. Make them feel like they belong on the For You Page, not like ads. Use Gen Z language, emojis, and TikTok trends.", premium: false },
-        { name: 'Tips & Tricks', icon: <Lightbulb />, prompt: "Give me a list of 6 viral, creative TikTok Shop monetization tips and tricks. Each tip should be actionable, use TikTok trends, and be written in Gen Z language with emojis. Make them feel like secret hacks that would go viral on the For You Page.", premium: false },
-        { name: 'Viral Scripts', icon: <FileText />, prompt: "Give me a 3-part ultra-viral TikTok video script template for TikTok Shop affiliates. Each part should use trending sounds, storytelling, surprise, or humor, and be super short and punchy. Use Gen Z language, emojis, and TikTok trends. Make it feel like a script that would blow up on the For You Page.", premium: true },
+        { name: 'Hooks', icon: <Sparkles />, prompt: "Give me a list of 6 ultra-viral, scroll-stopping TikTok hooks for TikTok Shop affiliates. Each hook should be super short (3-7 seconds), use trending sounds or formats, and feel native to the For You Page. Use Gen Z language, emojis, and TikTok trends. Make them impossible to scroll past. Do NOT include hashtags.", premium: false },
+        { name: 'Video Ideas', icon: <Film />, prompt: "Give me a list of 6 ultra-viral, native TikTok video ideas for TikTok Shop affiliates. Each idea should start with a scroll-stopping hook, use trending sounds or formats, and be super short (under 15 seconds). Focus on storytelling, surprise, humor, or transformation. Make them feel like they belong on the For You Page, not like ads. Use Gen Z language, emojis, and TikTok trends. Do NOT include hashtags.", premium: false },
+        { name: 'Tips & Tricks', icon: <Lightbulb />, prompt: "Give me a list of 6 viral, creative TikTok Shop monetization tips and tricks. For each tip, provide a 1-2 sentence explanation of why it works, when to use it, or a quick pro tip. Make them actionable, use TikTok trends, and write in Gen Z language with emojis. Do NOT include hashtags in your answer.", premium: false },
+        { name: 'Viral Scripts', icon: <FileText />, prompt: "Give me a 3-part ultra-viral TikTok video script template for TikTok Shop affiliates. Each part should use trending sounds, storytelling, surprise, or humor, and be super short and punchy. Use Gen Z language, emojis, and TikTok trends. Make it feel like a script that would blow up on the For You Page. Do NOT include hashtags.", premium: true },
         { name: 'TikTok Shop Hashtag Pack', icon: <TrendingUp />, prompt: `Give me a pack of 15-20 high-performing, viral TikTok hashtags for a TikTok Shop post about the following product. The hashtags should be a mix of trending, niche, and general TikTok Shop/affiliate tags, and should be optimized for the For You Page. Only include the hashtags (no explanations), separated by spaces, and do NOT include the # symbol in the output (the user will copy and paste them). Use Gen Z language and trends.`, premium: true },
-        { name: 'B-roll Prompts', icon: <Film />, prompt: `Give me a grouped, themed list of creative, viral B-roll shot ideas for a TikTok video about the following product. Use 4-5 themed sections (with emoji headers, e.g. "💎 Glow-Up Edition", "💅 That Girl", "🛍️ Buy It Energy", "💥 Bold", "🫶 Sentimental"). For each section, give 4-5 specific, trendy, and visually creative B-roll prompts as bullet points. Use Gen Z/creator energy, TikTok/Shop/UGC style, and include emojis and formatting. Make the ideas feel fresh, viral, and ready to copy-paste. Format as markdown or plain text with emoji headers and bullet points. Product:`, premium: true },
-        { name: 'Timed Script', icon: <FileText />, prompt: `Give me a TikTok video director's shot list for a product, broken down by timestamps (e.g., "0:00 - Hook", "0:03 - Demo"). For each timestamp, specify: (1) the on-screen action, (2) camera angle or movement, (3) any sound effects or transitions, and (4) a note on viral pacing or energy. Every scene should use TikTok trends, storytelling, or surprise, and be optimized for the For You Page. Always output at least 4-6 scenes, each on a new line, clearly separated. Make it visually descriptive, viral, and ready for a creator to film step-by-step. Do NOT return a single paragraph or a generic title. Example format:\n0:00 - Hook: [describe the opening, camera angle, SFX, energy]\n0:03 - Demo: [describe demo, camera movement, SFX, energy]\n0:10 - Social Proof: [describe testimonial, camera, SFX, energy]\n0:13 - Call to Action: [describe ending, camera, SFX, energy]`, premium: true },
+        { name: 'B-roll Prompts', icon: <Film />, prompt: `Give me a grouped, themed list of creative, viral B-roll shot ideas for a TikTok video about the following product. Use 4-5 themed sections (with emoji headers, e.g. "💎 Glow-Up Edition", "💅 That Girl", "🛍️ Buy It Energy", "💥 Bold", "🫶 Sentimental"). For each section, give 4-5 specific, trendy, and visually creative B-roll prompts as bullet points. Use Gen Z/creator energy, TikTok/Shop/UGC style, and include emojis and formatting. Make the ideas feel fresh, viral, and ready to copy-paste. Format as markdown or plain text with emoji headers and bullet points. Do NOT include hashtags. Product:`, premium: true },
+        { name: 'Timed Script', icon: <FileText />, prompt: `Give me a TikTok video director's shot list for a product, broken down by timestamps (e.g., "0:00 - Hook", "0:03 - Demo"). For each timestamp, specify: (1) the on-screen action, (2) camera angle or movement, (3) any sound effects or transitions, and (4) a note on viral pacing or energy. Every scene should use TikTok trends, storytelling, or surprise, and be optimized for the For You Page. Always output at least 4-6 scenes, each on a new line, clearly separated. Make it visually descriptive, viral, and ready for a creator to film step-by-step. Do NOT include hashtags. Do NOT return a single paragraph or a generic title. Example format:\n0:00 - Hook: [describe the opening, camera angle, SFX, energy]\n0:03 - Demo: [describe demo, camera movement, SFX, energy]\n0:10 - Social Proof: [describe testimonial, camera, SFX, energy]\n0:13 - Call to Action: [describe ending, camera, SFX, energy]`, premium: true },
     ];
 
+    // --- HANDLE GENERATE IDEAS ---
     const handleGenerateIdeas = async () => {
         if (!VITE_GEMINI_API_KEY) {
             setError("AI service is not configured. Please contact support.");
             return;
         }
-        if (!isSubscribed && remainingGenerations <= 0) {
+        if (!isSubscribed) {
             if (!user) {
-                setShowLoginModal(true);
+                if (remainingGenerations <= 0) {
+                    setShowLoginBonusModal(true);
+                    return;
+                }
             } else {
-                setError("You've reached your daily free limit. Upgrade to Genius for unlimited generations.");
+                // Free user: check per-feature limit
+                if (FREE_FEATURES.includes(ideaType) && remainingGenerations[ideaType] <= 0) {
+                    setError(`You've reached your daily free limit for ${ideaType}. Come back tomorrow or upgrade for unlimited ideas!`);
+                    return;
+                }
             }
-            return;
         }
         if (!product.trim()) {
             setError('Please enter a product or niche first.');
@@ -664,6 +711,23 @@ const GeneratorTool = ({ auth, user, db, userData, navigate, guestGenerations, s
         }
     }
 
+    // --- USAGE TRACKING ---
+    useEffect(() => {
+        if (user && db) {
+            const appId = VITE_APP_ID || 'default-app-id';
+            const userDocRef = doc(db, `artifacts/${appId}/users/${user.uid}`);
+            const today = new Date().toISOString().split('T')[0];
+            let updateObj = {};
+            if (!userData?.generationsByFeature || userData.generationsByFeature.lastReset !== today) {
+                // Reset all counts
+                FREE_FEATURES.forEach(f => { updateObj[`generationsByFeature.${f}`] = 0; });
+                updateObj['generationsByFeature.lastReset'] = today;
+            }
+            updateObj[`generationsByFeature.${ideaType}`] = (userData?.generationsByFeature?.[ideaType] || 0) + 1;
+            updateDoc(userDocRef, updateObj, { merge: true });
+        }
+    }, [generatedIdeas, user, db, ideaType, userData]);
+
     return (
         <div className="animate-fade-in">
             <header className="text-center mb-10 flex flex-col sm:flex-row justify-between items-center gap-4">
@@ -681,7 +745,12 @@ const GeneratorTool = ({ auth, user, db, userData, navigate, guestGenerations, s
                          </div>
                     ) : !isSubscribed ? (
                          <div className="text-right">
-                             <p className="font-bold text-slate-300">Daily Generations Left: {remainingGenerations > 0 ? remainingGenerations : 0}</p>
+                             <p className="font-bold text-slate-300">Daily Generations Left:</p>
+                             <ul className="text-xs text-slate-400">
+                                 {FREE_FEATURES.map(f => (
+                                     <li key={f}>{f}: <span className="font-bold text-white">{remainingGenerations[f] > 0 ? remainingGenerations[f] : 0}</span></li>
+                                 ))}
+                             </ul>
                              <button onClick={() => navigate('pricing')} className="text-purple-400 hover:text-purple-300 font-semibold">Upgrade to Genius ✨</button>
                          </div>
                     ) : (
