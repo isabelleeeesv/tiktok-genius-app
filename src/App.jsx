@@ -512,7 +512,6 @@ const GeneratorTool = ({ auth, user, db, userData, navigate, guestGenerations, s
         setGeneratedIdeas([]);
 
         const selectedIdea = ideaTypes.find(it => it.name === ideaType);
-        
         const prompt = `You are an expert TikTok marketing strategist specializing in creating viral content for TikTok Shop affiliates. Generate 6 unique and engaging ${selectedIdea.prompt} for a TikTok video promoting a "${product}".`;
 
         const payload = {
@@ -533,40 +532,28 @@ const GeneratorTool = ({ auth, user, db, userData, navigate, guestGenerations, s
             const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
             if (!response.ok) {
                 const errorData = await response.json();
+                console.error('Gemini API error response:', errorData);
                 throw new Error(errorData?.error?.message || `API error: ${response.status}`);
             }
-            
             const responseData = await response.json();
-            
+            console.log('Gemini API response:', responseData);
             if (responseData.candidates?.[0]?.content?.parts?.[0]) {
                 const jsonText = responseData.candidates[0].content.parts[0].text;
-                const parsedJson = JSON.parse(jsonText);
-                setGeneratedIdeas(parsedJson.ideas || []);
-                if (!parsedJson.ideas || parsedJson.ideas.length === 0) setError("The AI couldn't generate ideas for this topic.");
-
-                // Decrement count for logged-in free user OR guest
-                if (!isSubscribed) {
-                    if(user && db) {
-                        const appId = VITE_APP_ID || 'default-app-id';
-                        const userDocRef = doc(db, `artifacts/${appId}/users/${user.uid}`);
-                        const today = new Date().toISOString().split('T')[0];
-                        const newCount = (userData.generations.lastReset === today) ? (userData.generations.count || 0) + 1 : 1;
-                        await updateDoc(userDocRef, { 'generations.count': newCount, 'generations.lastReset': today });
-                    } else if (!user) { // Guest user
-                        const today = new Date().toISOString().split('T')[0];
-                        const newCount = (guestGenerations.lastReset === today) ? (guestGenerations.count || 0) + 1 : 1;
-                        const updatedGuestData = { count: newCount, lastReset: today };
-                        setGuestGenerations(updatedGuestData);
-                        localStorage.setItem('guestGenerations', JSON.stringify(updatedGuestData));
-                    }
+                console.log('Gemini API JSON text:', jsonText);
+                try {
+                    const parsedJson = JSON.parse(jsonText);
+                    setGeneratedIdeas(parsedJson.ideas || []);
+                    if (!parsedJson.ideas || parsedJson.ideas.length === 0) setError("The AI couldn't generate ideas for this topic.");
+                } catch (parseErr) {
+                    console.error('Failed to parse Gemini JSON text:', parseErr, jsonText);
+                    setError('Failed to parse AI response. Please try again or contact support.');
                 }
-
             } else {
                 if (responseData.candidates?.[0]?.finishReason === 'SAFETY') setError('Request blocked for safety reasons. Please try a different product.');
                 else setError('Failed to generate ideas. The response was empty.');
             }
         } catch (e) {
-            console.error(e);
+            console.error('handleGenerateIdeas error:', e);
             setError(`An error occurred: ${e.message}.`);
         } finally {
             setIsLoading(false);
