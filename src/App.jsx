@@ -567,10 +567,20 @@ const GeneratorTool = ({ auth, user, db, userData, navigate, guestGenerations, s
         }
         if (!isSubscribed) {
             if (!user) {
+                // Guest: check and increment guestGenerations
                 if (remainingGenerations <= 0) {
                     setShowLoginBonusModal(true);
                     return;
                 }
+                // Increment guest generation count in localStorage
+                const today = new Date().toISOString().split('T')[0];
+                let stored = JSON.parse(localStorage.getItem('guestGenerations') || '{}');
+                if (stored.lastReset !== today) {
+                    stored = { count: 0, lastReset: today };
+                }
+                stored.count = (stored.count || 0) + 1;
+                setGuestGenerations(stored);
+                localStorage.setItem('guestGenerations', JSON.stringify(stored));
             } else {
                 // Free user: check per-feature limit
                 if (FREE_FEATURES.includes(ideaType) && remainingGenerations[ideaType] <= 0) {
@@ -755,7 +765,16 @@ const GeneratorTool = ({ auth, user, db, userData, navigate, guestGenerations, s
 
     return (
         <div className="animate-fade-in">
-            <header className="text-center mb-10 flex flex-col sm:flex-row justify-between items-center gap-4">
+            <header className="text-center mb-10 flex flex-col sm:flex-row justify-between items-center gap-4 relative">
+                {/* Genius VIP button for guests and free users */}
+                {(!user || !isSubscribed) && (
+                    <button
+                        onClick={() => navigate('pricing')}
+                        className="absolute top-0 right-0 bg-gradient-to-r from-yellow-400 via-pink-500 to-purple-600 text-white font-bold py-2 px-5 rounded-full shadow-lg hover:scale-105 transition-all z-20 border-2 border-white/10"
+                        style={{margin: '1rem'}}>
+                        Genius VIP
+                    </button>
+                )}
                 <div>
                     <h1 className="text-3xl sm:text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-purple-400 via-pink-500 to-red-500">Shop Trend Genius</h1>
                     <p className="text-slate-400 text-lg">
