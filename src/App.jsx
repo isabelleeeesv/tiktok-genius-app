@@ -223,13 +223,8 @@ const App = () => {
     }
 
     const renderPage = () => {
-        // Always show the generator tool. The tool itself will handle guest/user differences.
         switch(currentPage) {
             case 'pricing':
-                if (!user) {
-                    setShowLoginModal(true);
-                    return <GeneratorTool auth={auth} user={user} db={db} userData={userData} navigate={setCurrentPage} guestGenerations={guestGenerations} setGuestGenerations={setGuestGenerations} setShowLoginModal={setShowLoginModal} />;
-                }
                 return <PricingPage user={user} navigate={setCurrentPage} />;
             case 'manage-subscription':
                 return <ManageSubscriptionPage user={user} navigate={setCurrentPage} />;
