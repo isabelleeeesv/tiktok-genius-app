@@ -223,9 +223,10 @@ const App = () => {
     }
 
     const renderPage = () => {
+        // Always show the generator tool. The tool itself will handle guest/user differences.
         switch(currentPage) {
             case 'pricing':
-                return <PricingPage user={user} navigate={setCurrentPage} />;
+                return <PricingPage user={user} navigate={setCurrentPage} setShowLoginModal={setShowLoginModal} />;
             case 'manage-subscription':
                 return <ManageSubscriptionPage user={user} navigate={setCurrentPage} />;
             default:
@@ -305,11 +306,15 @@ const LoadingScreen = () => (
     </div>
 );
 
-const PricingPage = ({ user, navigate }) => {
+const PricingPage = ({ user, navigate, setShowLoginModal }) => {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState(null);
 
     const handleSubscribe = async () => {
+        if (!user) {
+            if (setShowLoginModal) setShowLoginModal(true);
+            return;
+        }
         if (!VITE_STRIPE_PUBLISHABLE_KEY || !VITE_STRIPE_PRICE_ID) {
             setError("Payments are not configured correctly. Please contact support.");
             return;
