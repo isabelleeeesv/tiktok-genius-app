@@ -277,8 +277,12 @@ const App = () => {
                 
                 <footer className="text-center mt-12 text-slate-500 text-sm">
                     <p>Powered by AI. Designed for creators.</p>
-                     <div className="text-xs text-slate-400 mt-2">We are not affiliated with TikTok. TikTok is a trademark of ByteDance Ltd.</div>
+                    <div className="text-xs text-slate-400 mt-2">We are not affiliated with TikTok. TikTok is a trademark of ByteDance Ltd.</div>
                     {user && <p className="mt-1 text-xs truncate">User ID: {user.uid}</p>}
+                    <div className="mt-2">
+                        <a href="/privacy.html" className="underline text-slate-400 hover:text-white mr-4">Privacy Policy</a>
+                        <a href="/terms.html" className="underline text-slate-400 hover:text-white">Terms of Service</a>
+                    </div>
                 </footer>
             </div>
             <Analytics />
