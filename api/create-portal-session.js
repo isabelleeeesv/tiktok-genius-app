@@ -2,7 +2,7 @@ import { initializeApp, getApps, cert } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import Stripe from 'stripe';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY_LIVE);
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 // Decode the Base64 service account key
 let serviceAccount;
