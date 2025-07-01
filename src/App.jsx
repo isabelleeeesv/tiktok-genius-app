@@ -226,7 +226,7 @@ const App = () => {
         // Always show the generator tool. The tool itself will handle guest/user differences.
         switch(currentPage) {
             case 'pricing':
-                return <PricingPage user={user} navigate={setCurrentPage} setShowLoginModal={setShowLoginModal} />;
+                return <PricingPage user={user} userData={userData} navigate={setCurrentPage} setShowLoginModal={setShowLoginModal} />;
             case 'manage-subscription':
                 return <ManageSubscriptionPage user={user} navigate={setCurrentPage} />;
             default:
@@ -306,9 +306,13 @@ const LoadingScreen = () => (
     </div>
 );
 
-const PricingPage = ({ user, navigate, setShowLoginModal }) => {
+const PricingPage = ({ user, navigate, setShowLoginModal, userData }) => {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState(null);
+    const [isManagingSub, setIsManagingSub] = useState(false);
+
+    // Helper to check if user is subscribed
+    const isSubscribed = userData?.subscription?.status === 'active' || (user?.email === "thinkpink999333@gmail.com");
 
     const handleSubscribe = async () => {
         if (!user) {
@@ -319,10 +323,8 @@ const PricingPage = ({ user, navigate, setShowLoginModal }) => {
             setError("Payments are not configured correctly. Please contact support.");
             return;
         }
-
         setIsLoading(true);
         setError(null);
-
         try {
             const stripe = await loadStripe(VITE_STRIPE_PUBLISHABLE_KEY);
             const { error } = await stripe.redirectToCheckout({
@@ -333,59 +335,85 @@ const PricingPage = ({ user, navigate, setShowLoginModal }) => {
                 customerEmail: user?.isAnonymous ? '' : user?.email,
                 clientReferenceId: user?.uid
             });
-
             if (error) {
-                setError(error.message); // Will show the specific error from Stripe
+                setError(error.message);
                 setIsLoading(false);
             }
         } catch (err) {
-            setError(err.message || "An unexpected error occurred. Please try again."); // Will catch other errors
+            setError(err.message || "An unexpected error occurred. Please try again.");
             setIsLoading(false);
             console.error(err);
         }
     };
-    
+
+    const handleManageSubscription = async () => {
+        setIsManagingSub(true);
+        setError(null);
+        try {
+            const response = await fetch('/api/create-portal-session', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId: user.uid }),
+            });
+            const data = await response.json();
+            if (data.error) {
+                throw new Error(data.error);
+            }
+            window.location.href = data.url;
+        } catch (err) {
+            setError(`Could not manage subscription: ${err.message}`);
+        } finally {
+            setIsManagingSub(false);
+        }
+    };
+
     return (
         <div className="flex flex-col items-center animate-fade-in">
-             <header className="text-center mb-10 relative w-full">
-                 <button onClick={() => navigate('generator')} className="absolute top-0 left-0 text-slate-400 hover:text-white transition-colors"><X className="w-6 h-6" /></button>
-                 <h1 className="text-4xl sm:text-5xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-purple-400 via-pink-500 to-red-500">Choose Your Plan</h1>
-                 <p className="text-slate-400 text-lg max-w-2xl mx-auto mt-2">Unlock your full creative potential.</p>
-             </header>
-             {error && <p className="text-red-400 text-center mb-4 break-words">Error: {error}</p>}
-             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full max-w-4xl">
-                 <div className="bg-slate-800/50 border border-slate-700 rounded-2xl p-8 shadow-xl">
-                     <h2 className="text-2xl font-bold text-center">Starter</h2>
-                     <p className="text-center text-slate-400 mb-6">Perfect for getting started</p>
-                     <div className="text-center mb-8">
-                         <span className="text-5xl font-extrabold">Free</span>
-                     </div>
-                     <ul className="space-y-4 mb-8">
+            <header className="text-center mb-10 relative w-full">
+                <button onClick={() => navigate('generator')} className="absolute top-0 left-0 text-slate-400 hover:text-white transition-colors"><X className="w-6 h-6" /></button>
+                <h1 className="text-4xl sm:text-5xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-purple-400 via-pink-500 to-red-500">Choose Your Plan</h1>
+                <p className="text-slate-400 text-lg max-w-2xl mx-auto mt-2">Unlock your full creative potential.</p>
+            </header>
+            {error && <p className="text-red-400 text-center mb-4 break-words">Error: {error}</p>}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full max-w-4xl">
+                <div className="bg-slate-800/50 border border-slate-700 rounded-2xl p-8 shadow-xl">
+                    <h2 className="text-2xl font-bold text-center">Starter</h2>
+                    <p className="text-center text-slate-400 mb-6">Perfect for getting started</p>
+                    <div className="text-center mb-8">
+                        <span className="text-5xl font-extrabold">Free</span>
+                    </div>
+                    <ul className="space-y-4 mb-8">
                         <li className="flex items-center"><CheckCircle className="w-5 h-5 text-green-400 mr-3" /> 3 Daily Generations <span className="text-xs text-slate-400">(per feature when logged in, 3 total as guest)</span></li>
                         <li className="flex items-center"><CheckCircle className="w-5 h-5 text-green-400 mr-3" /> Basic Idea Categories</li>
-                     </ul>
-                     <button disabled className="w-full text-center bg-slate-700 text-slate-400 font-bold py-3 px-6 rounded-lg cursor-not-allowed">Your Current Plan</button>
-                 </div>
-                 <div className="bg-slate-800/80 border-2 border-purple-500 rounded-2xl p-8 shadow-2xl shadow-purple-500/10 relative">
-                     <div className="absolute top-0 right-8 -translate-y-1/2 bg-purple-600 text-white text-xs font-bold px-3 py-1 rounded-full">MOST POPULAR</div>
-                     <h2 className="text-2xl font-bold text-center text-purple-400">Genius</h2>
-                     <p className="text-center text-slate-400 mb-6">For creators ready to go viral</p>
-                     <div className="text-center mb-8">
-                         <span className="text-5xl font-extrabold">$7</span>
-                         <span className="text-slate-400">/month</span>
-                     </div>
-                     <ul className="space-y-4 mb-8">
-                         <li className="flex items-center"><CheckCircle className="w-5 h-5 text-green-400 mr-3" /> Unlimited Generations</li>
-                         <li className="flex items-center"><CheckCircle className="w-5 h-5 text-green-400 mr-3" /> All Idea Categories</li>
-                         <li className="flex items-center"><CheckCircle className="w-5 h-5 text-green-400 mr-3" /> **NEW** Viral Script Templates</li>
-                         <li className="flex items-center"><CheckCircle className="w-5 h-5 text-green-400 mr-3" /> **NEW** Trending Audio Ideas</li>
-                         <li className="flex items-center"><CheckCircle className="w-5 h-5 text-green-400 mr-3" /> Save Favorite Ideas</li>
-                     </ul>
-                     <button onClick={handleSubscribe} disabled={isLoading} className="w-full flex items-center justify-center bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:shadow-xl hover:shadow-purple-500/20 hover:scale-105 disabled:opacity-50 disabled:hover:scale-100 transition-all duration-300">
-                         {isLoading ? 'Processing...' : 'Upgrade to Genius'}
-                     </button>
-                 </div>
-             </div>
+                    </ul>
+                    <button disabled className="w-full text-center bg-slate-700 text-slate-400 font-bold py-3 px-6 rounded-lg cursor-not-allowed">Your Current Plan</button>
+                </div>
+                <div className="bg-slate-800/80 border-2 border-purple-500 rounded-2xl p-8 shadow-2xl shadow-purple-500/10 relative">
+                    <div className="absolute top-0 right-8 -translate-y-1/2 bg-purple-600 text-white text-xs font-bold px-3 py-1 rounded-full">MOST POPULAR</div>
+                    <h2 className="text-2xl font-bold text-center text-purple-400">Genius</h2>
+                    <p className="text-center text-slate-400 mb-6">For creators ready to go viral</p>
+                    <div className="text-center mb-8">
+                        <span className="text-5xl font-extrabold">$7</span>
+                        <span className="text-slate-400">/month</span>
+                    </div>
+                    <ul className="space-y-4 mb-8">
+                        <li className="flex items-center"><CheckCircle className="w-5 h-5 text-green-400 mr-3" /> Unlimited Generations</li>
+                        <li className="flex items-center"><CheckCircle className="w-5 h-5 text-green-400 mr-3" /> All Idea Categories</li>
+                        <li className="flex items-center"><CheckCircle className="w-5 h-5 text-green-400 mr-3" /> **NEW** Viral Script Templates</li>
+                        <li className="flex items-center"><CheckCircle className="w-5 h-5 text-green-400 mr-3" /> **NEW** Trending Audio Ideas</li>
+                        <li className="flex items-center"><CheckCircle className="w-5 h-5 text-green-400 mr-3" /> Save Favorite Ideas</li>
+                    </ul>
+                    {isSubscribed ? (
+                        <button onClick={handleManageSubscription} disabled={isManagingSub} className="w-full flex items-center justify-center bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:shadow-xl hover:shadow-purple-500/20 hover:scale-105 disabled:opacity-50 disabled:hover:scale-100 transition-all duration-300">
+                            {isManagingSub ? 'Loading...' : 'Manage Subscription'}
+                        </button>
+                    ) : (
+                        <button onClick={handleSubscribe} disabled={isLoading} className="w-full flex items-center justify-center bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:shadow-xl hover:shadow-purple-500/20 hover:scale-105 disabled:opacity-50 disabled:hover:scale-100 transition-all duration-300">
+                            {isLoading ? 'Processing...' : 'Upgrade to Genius'}
+                        </button>
+                    )}
+                </div>
+            </div>
         </div>
     );
 };
@@ -779,6 +807,15 @@ const GeneratorTool = ({ auth, user, db, userData, navigate, guestGenerations, s
                             className="bg-gradient-to-r from-yellow-400 via-pink-500 to-purple-600 text-white font-bold py-2 px-5 rounded-full shadow-lg hover:scale-105 transition-all border-2 border-white/10"
                         >
                             Genius VIP
+                        </button>
+                    )}
+                    {isSubscribed && (
+                        <button
+                            onClick={handleManageSubscription}
+                            disabled={isManagingSub}
+                            className="bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold py-2 px-5 rounded-full shadow-lg hover:scale-105 transition-all border-2 border-white/10 disabled:opacity-50"
+                        >
+                            {isManagingSub ? 'Loading...' : 'Manage Subscription'}
                         </button>
                     )}
                     { !user ? (
